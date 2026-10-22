@@ -241,7 +241,10 @@ async def radar_stream():
                     if not message.get("topic","").startswith("publicTrade."):continue
                     symbol=message["topic"].split(".",1)[1]
                     rows=message.get("data",[])
+                    before_alerts=radar.count
                     radar.ingest(symbol,rows)
+                    if radar.count>before_alerts:
+                        persist("radar_alert",radar.alerts[0].copy())
                     if rows:
                         try:radar.mark(symbol,float(rows[-1]["p"]))
                         except (ValueError,KeyError,TypeError):pass
