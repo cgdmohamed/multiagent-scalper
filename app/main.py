@@ -1,4 +1,7 @@
 import asyncio
+import hashlib
+import hmac
+import secrets
 import json
 import logging
 import os
@@ -8,7 +11,7 @@ from dataclasses import asdict
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from .ai import ShadowAgents
 from .news import NewsMonitor
@@ -39,6 +42,45 @@ def record_shadow(review):
 
 DB_PATH = Path(os.getenv("DB_PATH", "/data/events.sqlite3"))
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
+SESSION_LIFETIME = 7*24*3600
+MANUALLY_PAUSED = False
+
+
+def auth_cookie_value():
+    issued=str(int(time.time()))
+    nonce=secrets.token_urlsafe(16)
+    body=f"{issued}.{nonce}"
+    mac=hmac.new(ADMIN_TOKEN.encode(),("scalper-session:"+body).encode(),hashlib.sha256).hexdigest()
+    return body+"."+mac
+
+
+def cookie_valid(value):
+    if not ADMIN_TOKEN or not value:return False
+    try:
+        issued,nonce,signature=value.split(".")
+        age=int(time.time())-int(issued)
+        if not 0<=age<=SESSION_LIFETIME or not nonce or len(nonce)>64:return False
+        expected=hmac.new(ADMIN_TOKEN.encode(),f"scalper-session:{issued}.{nonce}".encode(),hashlib.sha256).hexdigest()
+        return hmac.compare_digest(signature,expected)
+    except (ValueError,AttributeError):
+        return False
+
+
+def save_operator_pause(paused):
+    DB_PATH.parent.mkdir(parents=True,exist_ok=True)
+    with sqlite3.connect(DB_PATH) as db:
+        db.execute("CREATE TABLE IF NOT EXISTS operator_settings (name TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        db.execute("INSERT INTO operator_settings(name,value) VALUES ('paused',?) ON CONFLICT(name) DO UPDATE SET value=excluded.value",("1" if paused else "0",))
+
+
+def restore_operator_pause():
+    global MANUALLY_PAUSED
+    if not DB_PATH.exists():return
+    with sqlite3.connect(DB_PATH) as db:
+        if db.execute("SELECT 1 FROM sqlite_master WHERE name='operator_settings' AND type='table'").fetchone():
+            row=db.execute("SELECT value FROM operator_settings WHERE name='paused'").fetchone()
+            MANUALLY_PAUSED=bool(row and row[0]=="1")
+    engine.operator_paused=MANUALLY_PAUSED
 
 
 def persist(kind, payload):
@@ -264,6 +306,7 @@ async def radar_stream():
 @asynccontextmanager
 async def lifespan(app):
     restore_portfolio()
+    restore_operator_pause()
     task=asyncio.create_task(market_stream())
     news_task=asyncio.create_task(news.loop())
     radar_task=asyncio.create_task(radar_stream())
@@ -283,6 +326,63 @@ async def lifespan(app):
 app=FastAPI(title="Bybit Multi-Agent Scalping Research MVP", lifespan=lifespan)
 
 
+@app.middleware("http")
+async def browser_session_auth(request: Request, call_next):
+    if cookie_valid(request.cookies.get("scalper_session")):
+        if request.method not in ("GET","HEAD","OPTIONS"):
+            origin=request.headers.get("origin")
+            host=request.headers.get("host","")
+            if not origin or origin not in (f"https://{host}",f"http://{host}"):
+                return Response(status_code=403,content="Invalid request origin")
+        headers=[(k,v) for k,v in request.scope["headers"] if k.lower()!=b"x-admin-token"]
+        headers.append((b"x-admin-token",ADMIN_TOKEN.encode()))
+        request.scope["headers"]=headers
+    return await call_next(request)
+
+
+@app.post("/auth/login")
+def browser_login(response: Response, x_admin_token: str | None=Header(default=None)):
+    secure(x_admin_token)
+    response.set_cookie("scalper_session",auth_cookie_value(),max_age=SESSION_LIFETIME,
+                        httponly=True,secure=True,samesite="strict",path="/")
+    response.headers["Cache-Control"]="no-store"
+    return {"authenticated":True,"session_days":7}
+
+
+@app.get("/auth/session")
+def browser_session(x_admin_token: str | None=Header(default=None)):
+    secure(x_admin_token)
+    return {"authenticated":True,"session_days":7}
+
+
+@app.post("/auth/logout")
+def browser_logout(response:Response,x_admin_token: str | None=Header(default=None)):
+    secure(x_admin_token)
+    response.delete_cookie("scalper_session",path="/",secure=True,samesite="strict",httponly=True)
+    return {"authenticated":False}
+
+
+@app.post("/control/pause")
+def pause_new_entries(x_admin_token: str | None=Header(default=None)):
+    global MANUALLY_PAUSED
+    secure(x_admin_token)
+    save_operator_pause(True)
+    MANUALLY_PAUSED=True
+    engine.operator_paused=True
+    return {"operator_paused":True,"risk_halted":engine.halted,"open_positions_unaffected":True}
+
+
+@app.post("/control/run")
+def resume_new_entries(x_admin_token: str | None=Header(default=None)):
+    global MANUALLY_PAUSED
+    secure(x_admin_token)
+    save_operator_pause(False)
+    MANUALLY_PAUSED=False
+    engine.operator_paused=False
+    return {"operator_paused":False,"risk_halted":engine.halted,"note":"Risk circuit breaker is never overridden"}
+
+
+
 def secure(x_admin_token: str | None):
     # Fail closed when no admin token is configured.
     if not ADMIN_TOKEN or x_admin_token != ADMIN_TOKEN:
@@ -295,6 +395,7 @@ def health(): return {"ok":True,"mode":"FUTURES_PAPER_ONLY","feed_connected":eng
 def status(x_admin_token: str | None=Header(default=None)):
     secure(x_admin_token)
     current=engine.status()
+    current["operator_paused"]=MANUALLY_PAUSED
     current["portfolio_recovery"]=PORTFOLIO_RECOVERY
     current["halt_diagnostic"]="LEGACY_HISTORY_REQUIRES_RECONCILIATION" if PORTFOLIO_RECOVERY=="UNRECONCILED_LEGACY_HISTORY" else "CHECKPOINT_INVALID" if PORTFOLIO_RECOVERY=="CHECKPOINT_INVALID" else "RISK_LIMIT_OR_RESTORED_HALT" if engine.halted else "NONE"
     return current
