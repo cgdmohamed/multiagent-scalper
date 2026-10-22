@@ -24,6 +24,7 @@ from .performance import report as performance_report, cooldown_study, account_a
 from .radar import OpportunityRadar
 from .reconciliation import analyze as analyze_legacy
 from .strategy_lab import StrategyLab
+from .benchmark import compare as compare_benchmarks
 from .research_indicators import ResearchIndicators
 
 logger = logging.getLogger(__name__)
@@ -600,6 +601,11 @@ def start_fresh_paper_session(confirmation: str, x_admin_token: str | None=Heade
     return {"status":"NEW_PAPER_SESSION_STARTED","starting_cash":engine.cfg.initial_cash,
             "legacy_history_preserved":True,"execution_mode":"PAPER_ONLY"}
 
+
+@app.get("/benchmark")
+def benchmark_status(x_admin_token: str | None=Header(default=None)):
+    secure(x_admin_token)
+    return compare_benchmarks(list(lab.samples))
 
 @app.get("/strategy-lab")
 def strategy_lab_status(x_admin_token: str | None=Header(default=None)):
