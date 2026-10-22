@@ -67,6 +67,12 @@ async def prime_candles(client, symbols):
             except Exception as exc:
                 logger.warning("Candle preload failed for %s %sm: %s",symbol,interval,exc)
 
+def subscription_batches(symbols, batch_size=10):
+    topics=[topic for symbol in symbols for topic in
+            (f"orderbook.50.{symbol}", f"kline.1.{symbol}", f"kline.3.{symbol}")]
+    return [topics[i:i+batch_size] for i in range(0,len(topics),batch_size)]
+
+
 async def market_stream():
     url = "wss://stream.bybit.com/v5/public/spot"
     # Refresh candidates between socket sessions. Always retain open positions.
@@ -83,11 +89,9 @@ async def market_stream():
                 await prime_candles(candle_client, watched)
             async with websockets.connect(url, ping_interval=20, ping_timeout=15, max_size=2**22) as ws:
                 # Bybit Spot permits at most 10 args PER subscription request.
-                topics = [topic for symbol in watched for topic in
-                          (f"orderbook.50.{symbol}", f"kline.1.{symbol}", f"kline.3.{symbol}")]
-                for index in range(0, len(topics), 10):
-                    await ws.send(json.dumps({"op":"subscribe", "req_id":f"scalper-{index//10}",
-                                              "args":topics[index:index+10]}))
+                for index, batch in enumerate(subscription_batches(watched)):
+                    await ws.send(json.dumps({"op":"subscribe", "req_id":f"scalper-{index}",
+                                              "args":batch}))
                 engine.feed_connected = True
                 engine.last_error = None
                 logger.info("Bybit spot candidates: %s", watched)
