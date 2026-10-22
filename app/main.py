@@ -41,6 +41,32 @@ def persist(kind, payload):
         db.execute("INSERT INTO events (kind,payload) VALUES (?,?)",(kind,json.dumps(payload)))
 
 
+async def prime_candles(client, symbols):
+    # REST history is required because 3m confirmations arrive slower than
+    # the five-minute candidate rotation. Exclude any still-open candle.
+    now_ms = int(time.time() * 1000)
+    async def load(symbol, interval):
+        resp = await client.get(
+            "https://api.bybit.com/v5/market/kline",
+            params={"category":"spot","symbol":symbol,"interval":interval,"limit":20},
+            timeout=12.0,
+        )
+        resp.raise_for_status()
+        payload=resp.json()
+        if payload.get("retCode") != 0:
+            raise RuntimeError(f"Kline API retCode={payload.get('retCode')}")
+        duration=int(interval)*60000
+        for bar in sorted(payload.get("result",{}).get("list",[]), key=lambda b:int(b[0])):
+            start=int(bar[0])
+            if start+duration <= now_ms:
+                engine.on_candle(symbol,interval,start,float(bar[4]))
+    for symbol in symbols:
+        for interval in ("1","3"):
+            try:
+                await load(symbol,interval)
+            except Exception as exc:
+                logger.warning("Candle preload failed for %s %sm: %s",symbol,interval,exc)
+
 async def market_stream():
     url = "wss://stream.bybit.com/v5/public/spot"
     # Refresh candidates between socket sessions. Always retain open positions.
@@ -53,6 +79,8 @@ async def market_stream():
             engine.set_candidates(ranked)
             engine.order_manager.allowed_symbols.update(p.symbol for p in ranked)
             watched = sorted(set(p.symbol for p in ranked) | set(engine.positions))
+            async with httpx.AsyncClient() as candle_client:
+                await prime_candles(candle_client, watched)
             async with websockets.connect(url, ping_interval=20, ping_timeout=15, max_size=2**22) as ws:
                 await ws.send(json.dumps({"op":"subscribe","args":[topic for symbol in watched for topic in (f"orderbook.50.{symbol}", f"kline.1.{symbol}", f"kline.3.{symbol}")]}))
                 engine.feed_connected = True
@@ -143,7 +171,7 @@ def secure(x_admin_token: str | None):
         raise HTTPException(403,"Unauthorized")
 
 @app.get("/health")
-def health(): return {"ok":True,"mode":"PAPER_ONLY","feed_connected":engine.feed_connected}
+def health(): return {"ok":True,"mode":"PAPER_ONLY","feed_connected":engine.feed_connected,"last_error":engine.last_error,"ranked_pairs":len(engine.candidates),"decisions":len(engine.decisions)}
 
 @app.get("/status")
 def status(x_admin_token: str | None=Header(default=None)):
