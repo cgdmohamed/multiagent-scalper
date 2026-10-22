@@ -57,6 +57,18 @@ SESSION_LIFETIME = 7*24*3600
 MANUALLY_PAUSED = False
 BOT_STOPPED = False
 BOT_TASKS = {}
+STARTUP_EVENTS = []
+STARTUP_STAGE = "IDLE"
+STARTUP_GENERATION = 0
+LAST_MARKET_MESSAGE_MS = None
+
+def startup_event(stage, message, level="info"):
+    global STARTUP_STAGE
+    STARTUP_STAGE=stage
+    STARTUP_EVENTS.append({"at":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),
+                           "stage":stage,"message":message[:240],"level":level})
+    del STARTUP_EVENTS[:-35]
+
 BOT_LOCK = asyncio.Lock()
 
 
@@ -229,6 +241,7 @@ async def market_stream():
     # Refresh candidates between socket sessions. Always retain open positions.
     while True:
         try:
+            startup_event("DISCOVERY","Fetching candidate markets")
             async with httpx.AsyncClient() as client:
                 ranked = await fetch_candidates(client)
             if not ranked:
@@ -236,13 +249,16 @@ async def market_stream():
             engine.set_candidates(ranked)
             engine.order_manager.allowed_symbols.update(p.symbol for p in ranked)
             watched = sorted(set(p.symbol for p in ranked) | set(engine.positions))
+            startup_event("CANDLES",f"Discovered {len(watched)} symbols; loading closed candles")
             async with httpx.AsyncClient() as candle_client:
                 await prime_candles(candle_client, watched)
+            startup_event("CONNECTING","Opening Bybit public linear WebSocket")
             async with websockets.connect(url, ping_interval=20, ping_timeout=15, max_size=2**22) as ws:
                 # Bybit Spot permits at most 10 args PER subscription request.
                 for index, batch in enumerate(subscription_batches(watched)):
                     await ws.send(json.dumps({"op":"subscribe", "req_id":f"scalper-{index}",
                                               "args":batch}))
+                startup_event("SUBSCRIBED",f"Subscription requests sent for {len(watched)} symbols; awaiting market data")
                 engine.feed_connected = True
                 engine.last_error = None
                 logger.info("Bybit spot candidates: %s", watched)
@@ -260,6 +276,11 @@ async def market_stream():
                         logger.info("Bybit subscription acknowledgement: %s", event.get("req_id"))
                         continue
                     topic = event.get("topic", "")
+                    if topic.startswith(("orderbook.","kline.")):
+                        global LAST_MARKET_MESSAGE_MS
+                        LAST_MARKET_MESSAGE_MS=int(time.time()*1000)
+                        if STARTUP_STAGE!="RECEIVING_DATA":
+                            startup_event("RECEIVING_DATA",f"Market data received ({topic})")
                     if topic.startswith("kline."):
                         symbol = topic.rsplit(".", 1)[-1]
                         if symbol in watched:
@@ -310,6 +331,7 @@ async def market_stream():
         except asyncio.CancelledError: raise
         except Exception as exc:
             engine.last_error = f"{type(exc).__name__}: {str(exc)[:180]}"
+            startup_event("RETRYING",f"Market feed failure: {engine.last_error}; retrying", "error")
             logger.warning("Market feed failed: %s",engine.last_error)
         finally:
             engine.feed_connected=False
@@ -376,7 +398,10 @@ async def historical_research_worker():
 
 
 def launch_bot_tasks():
+    global STARTUP_GENERATION
     if BOT_STOPPED:return
+    STARTUP_GENERATION+=1
+    startup_event("WORKERS_STARTED","Research workers requested: market, news, radar and history")
     for name,fn in (("market",market_stream),("news",news.loop),("radar",radar_stream),("history",historical_research_worker)):
         if name not in BOT_TASKS or BOT_TASKS[name].done():
             BOT_TASKS[name]=asyncio.create_task(fn())
@@ -393,6 +418,7 @@ async def shutdown_bot_tasks():
             for task in pending:task.add_done_callback(lambda _: None)
     BOT_TASKS.clear()
     engine.feed_connected=False
+    startup_event("STOPPED","Research workers stopped")
 
 
 @asynccontextmanager
@@ -532,6 +558,8 @@ def status(x_admin_token: str | None=Header(default=None)):
     current["capital_guardian"]=guardian_inspect(engine)
     current["strategy_selection"]="RESEARCH_ONLY_NO_EXECUTION"
     market_task=BOT_TASKS.get("market")
+    current["startup"]={"generation":STARTUP_GENERATION,"stage":"STOPPED" if BOT_STOPPED else STARTUP_STAGE,
+                         "events":STARTUP_EVENTS[-12:],"last_market_message_ms":LAST_MARKET_MESSAGE_MS}
     current["monitoring_state"]="STOPPED" if BOT_STOPPED else "CONNECTING_OR_FAILED" if not market_task or market_task.done() or not engine.feed_connected else "CONNECTED"
     current["bot_state"]="STOPPED" if BOT_STOPPED else "PAUSED" if MANUALLY_PAUSED else "RESEARCH_RUNNING" if engine.research_only else "RISK_HALTED" if engine.halted else "RUNNING"
     current["operator_paused"]=MANUALLY_PAUSED
