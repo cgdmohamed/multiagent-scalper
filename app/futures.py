@@ -115,8 +115,31 @@ class FuturesPaperEngine(PaperEngine):
         eq=self.equity()
         if eq<=self.peak_equity*(1-self.cfg.drawdown_limit) or eq<=self.day_start_equity*(1-self.cfg.daily_loss_limit):self.halted=True
 
+    def position_analytics(self):
+        """Estimated exit-marked P&L, not exchange liquidation or funding accounting."""
+        out={}
+        for symbol,p in self.positions.items():
+            book=self.books.get(symbol)
+            price=(book.bid if p.direction=="LONG" else book.ask) if book else p.entry
+            exit_price=price*(1-self.cfg.slippage_bps_per_side/10000 if p.direction=="LONG" else 1+self.cfg.slippage_bps_per_side/10000)
+            gross=((exit_price-p.entry) if p.direction=="LONG" else (p.entry-exit_price))*p.qty
+            estimated_exit_fee=exit_price*p.qty*self.cfg.taker_fee_bps/10000
+            out[symbol]={"mark_price":price,"estimated_exit_price":exit_price,
+                         "unrealized_pnl":gross-p.entry_fee-estimated_exit_fee,
+                         "gross_unrealized_pnl":gross,"estimated_exit_fee":estimated_exit_fee,
+                         "entry_fee":p.entry_fee,
+                         "mark_source":"orderbook_bid_ask" if book else "entry_fallback"}
+        return out
+
     def status(self):
         value=super().status()
+        closed=[t for t in self.trades if t.get("event")=="CLOSE"]
+        analytics=self.position_analytics()
+        value.update({"realized_pnl":sum(t.get("pnl",0) for t in closed),
+                      "unrealized_pnl":sum(p["unrealized_pnl"] for p in analytics.values()),
+                      "position_analytics":analytics,
+                      "closed_trades":len(closed),
+                      "accounting_note":"Exit-marked PnL incl estimated fees/slippage; no funding or liquidation simulation"})
         value.update({"mode":"FUTURES_PAPER_ONLY","market":"BYBIT_LINEAR_USDT_PERPETUAL","leverage":1,
                       "funding_model":"NOT_IMPLEMENTED","liquidation_model":"NOT_IMPLEMENTED",
                       "positions":{symbol:asdict(pos) for symbol,pos in self.positions.items()}})
