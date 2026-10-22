@@ -34,6 +34,7 @@ class StrategyLab:
         if book.spread_bps>5:return changed
         signals={}
         indicators=indicators or {}
+        technical=indicators.get("technical") or {}
         vwap=indicators.get("vwap_2m")
         atr=indicators.get("atr_1m_14")
         atr_bps=indicators.get("atr_bps")
@@ -56,6 +57,18 @@ class StrategyLab:
             delta=now-previous[0]
             move=(mid/previous[1]-1)*10000 if previous[1]>0 else 0
             if 500<=delta<=30000 and abs(move)>8 and abs(imbalance)>.3 and move*imbalance>0:signals["ORDERBOOK_PRESSURE_PROXY"]="LONG" if move>0 else "SHORT"
+        # A/B research variants use identical market observations and separate outcome tracking.
+        if technical.get("ready") and m1*m3>0 and abs(m1)>12:
+            direction="LONG" if m1>0 else "SHORT"
+            aligned=technical["plus_di"]>technical["minus_di"] if direction=="LONG" else technical["minus_di"]>technical["plus_di"]
+            momentum=technical["macd_hist"]>0 if direction=="LONG" else technical["macd_hist"]<0
+            healthy_rsi=(45<=technical["rsi14"]<=70) if direction=="LONG" else (30<=technical["rsi14"]<=55)
+            if technical["adx14"]>=25 and aligned and abs(imbalance)>.18:
+                signals["TREND_ADX_FILTER"]="LONG" if m1>0 else "SHORT"
+            if momentum and healthy_rsi and abs(imbalance)>.18:
+                signals["TREND_MACD_RSI_FILTER"]=direction
+            if technical["adx14"]>=25 and aligned and momentum and healthy_rsi and recent_cvd is not None and m1*recent_cvd>0 and liquid:
+                signals["TREND_ALL_CONFIRMATIONS"]=direction
         for strategy,direction in signals.items():
             key=(sym,strategy)
             if now-self.last_signal.get(key,-10**15)<15*60*1000:continue
@@ -64,7 +77,7 @@ class StrategyLab:
                   "timestamp":datetime.fromtimestamp(now/1000,timezone.utc).isoformat(),
                   "entry":mid,"cost_bps":round(24+book.spread_bps,2),"regime":regime,
                   "research_indicators":{k:indicators.get(k) for k in ("vwap_2m","cvd_recent_30s","atr_bps","public_trades")},
-                  "returns":{}}
+                  "technical":technical,"returns":{}}
             item["id"]=f"{sym}:{strategy}:{now}"
             self.samples.appendleft(item)
             changed.append(item)
@@ -72,7 +85,7 @@ class StrategyLab:
         return changed
     def report(self):
         stats={}
-        for name in ("TREND_SCALP","MOMENTUM_BREAKOUT","ORDERBOOK_PRESSURE_PROXY","EXECUTED_CVD_CONFIRM","VWAP_PULLBACK"):
+        for name in ("TREND_SCALP","MOMENTUM_BREAKOUT","ORDERBOOK_PRESSURE_PROXY","EXECUTED_CVD_CONFIRM","VWAP_PULLBACK","TREND_ADX_FILTER","TREND_MACD_RSI_FILTER","TREND_ALL_CONFIRMATIONS"):
             rows=[r for r in self.samples if r["strategy"]==name]
             measured=[r["returns"]["15m"] for r in rows if "15m" in r["returns"]]
             stats[name]={"signals":len(rows),"observed_15m":len(measured),
