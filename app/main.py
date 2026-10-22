@@ -114,7 +114,8 @@ def restore_lab():
     from collections import deque
     lab.samples=deque(rows,maxlen=2000)
     now=int(time.time()*1000)
-    lab.pending=[row for row in rows if now-row["at_ms"]<900000 and "15m" not in row["returns"]]
+    lab.pending=[row for row in rows if "15m" not in row["returns"] and row.get("measurement_status")!="EXPIRED_NO_FRESH_QUOTE"]
+    save_lab_changes(lab.expire_pending(now))
     for row in reversed(rows):
         key=(row["symbol"],row["strategy"])
         lab.last_signal[key]=max(lab.last_signal.get(key,0),row["at_ms"])
@@ -658,6 +659,7 @@ def benchmark_status(x_admin_token: str | None=Header(default=None)):
 @app.get("/strategy-lab")
 def strategy_lab_status(x_admin_token: str | None=Header(default=None)):
     secure(x_admin_token)
+    save_lab_changes(lab.expire_pending())
     return lab.report()
 
 @app.get("/events")
