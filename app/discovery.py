@@ -22,12 +22,12 @@ def discover(instruments: list[dict], tickers: list[dict], *, top_n: int = 5, mi
     specs = {}
     for inst in instruments:
         symbol = inst.get('symbol', '')
-        if inst.get('status') != 'Trading' or inst.get('quoteCoin') != 'USDT' or not symbol.endswith('USDT'):
+        if (inst.get('status') != 'Trading' or inst.get('quoteCoin') != 'USDT' or inst.get('settleCoin') != 'USDT' or inst.get('contractType') != 'LinearPerpetual' or not symbol.endswith('USDT')):
             continue
         try:
             rules = inst['lotSizeFilter']
-            minimum = float(rules.get('minOrderAmt', 10))
-            step = float(rules['basePrecision'])
+            minimum = float(rules.get('minNotionalValue') or 5)
+            step = float(rules['qtyStep'])
             tick = float(inst['priceFilter']['tickSize'])
             if minimum <= 0 or step <= 0 or tick <= 0: continue
         except (KeyError, ValueError, TypeError): continue
@@ -59,7 +59,7 @@ async def fetch_candidates(client: httpx.AsyncClient, *, top_n=5, min_turnover=5
     instruments=[]
     cursor=None
     for _ in range(25):
-        params={'category':'spot','limit':1000}
+        params={'category':'linear','limit':1000}
         if cursor: params['cursor']=cursor
         result=await fetch('/v5/market/instruments-info',params)
         instruments.extend(result.get('list',[]))
@@ -67,5 +67,5 @@ async def fetch_candidates(client: httpx.AsyncClient, *, top_n=5, min_turnover=5
         if not next_cursor or next_cursor==cursor: break
         cursor=next_cursor
     else: raise RuntimeError('Instrument pagination exceeded bound')
-    tickers=(await fetch('/v5/market/tickers',{'category':'spot'})).get('list',[])
+    tickers=(await fetch('/v5/market/tickers',{'category':'linear'})).get('list',[])
     return discover(instruments,tickers,top_n=top_n,min_turnover=min_turnover,max_spread_bps=max_spread_bps)
