@@ -54,7 +54,7 @@ html,body{max-width:100%;overflow-x:hidden}
  </style></head>
 <body><div class="app">
 <header><div class="brand"><span class="brand-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 17 6-6 4 4 8-9"/><path d="M15 6h6v6"/></svg></span><div><h1>Scalper <span style="color:var(--gold)">Terminal</span></h1><div class="sub">BYBIT LINEAR FUTURES · 1× PAPER RESEARCH · NO LIVE ORDERS</div></div></div><div class="auth"><input type="password" id="token" autocomplete="off" placeholder="Admin token" aria-label="Admin token"><button class="primary" id="connect">Connect</button><button id="logout" style="display:none">Log out</button><button id="pauseBot" style="display:none">Pause</button><button id="runBot" style="display:none">Run</button><button id="stopBot" style="display:none">Stop Bot</button><button id="startBot" style="display:none">Start Bot</button></div></header>
-<div class="statusline"><div id="liveStatus"><span class="dot"></span>Awaiting connection</div><div class="notice" id="notice">Enter admin token to view private research data</div></div>
+<div id="botStateBanner" role="status" style="margin-top:14px;padding:13px;border:1px solid #4e5761;border-radius:10px;font-weight:750">Bot status: waiting for authentication</div><div class="statusline"><div id="liveStatus"><span class="dot"></span>Awaiting connection</div><div class="notice" id="notice">Enter admin token to view private research data</div></div>
 <section class="stats">
 <div class="tile"><div class="tilehead"><span>◈</span> Equity</div><div class="number" id="equity">—</div></div>
 <div class="tile"><div class="tilehead"><span>▣</span> Available cash</div><div class="number" id="cash">—</div></div>
@@ -183,7 +183,10 @@ async function refresh(){
  const now=Date.now(),signature=JSON.stringify([s.equity,s.cash,s.positions,s.position_analytics,s.decisions,s.trades,d[0]?.decision_id,t[0]?.timestamp,a.reviews_started,a.agent_successes,a.agent_errors,n.last_update]);
  if(signature!==lastSignature){lastSignature=signature;lastChange=now}lastSuccess=now;connected=true;
  $('liveStatus').innerHTML='<span class="dot live"></span> Live · Synced '+new Date(now).toLocaleTimeString()+' · Data changed '+new Date(lastChange).toLocaleTimeString()+' · Every 2 seconds';
- $('notice').textContent=s.halted?('NEW ENTRIES HALTED · '+(s.halt_diagnostic||'RISK_PROTECTION')+' · Paper positions remain monitored.'):s.last_error||'Paper mode active. AI does not control executions.';
+ const operating=s.bot_state||'UNKNOWN';
+ $('botStateBanner').textContent='BOT '+operating+(s.bot_stopped?' · All background workers stopped':s.operator_paused?' · New entries disabled':s.halted?' · Risk / performance protection active':' · Monitoring market');
+ $('botStateBanner').style.borderColor=operating==='RUNNING'?'#02c076':operating==='STOPPED'?'#f6465d':'#f0b90b';
+ $('notice').textContent=s.bot_stopped?'STOPPED · Background work and new AI reviews disabled.':s.operator_paused?'PAUSED · No new entries; open positions still monitored.':s.halted?('NEW ENTRIES HALTED · '+(s.halt_diagnostic||'RISK_PROTECTION')+' · Paper positions remain monitored.'):s.last_error||'Paper mode active. AI does not control executions.';
  $('equity').textContent=money(s.equity);$('cash').textContent=money(s.cash);$('positions').textContent=Object.keys(s.positions||{}).length;
  const realized=s.realized_pnl??t.filter(x=>x.event==='CLOSE').reduce((sum,x)=>sum+(x.pnl||0),0);
  $('pnl').textContent=signed(realized);$('pnl').className='number '+cls(realized);
@@ -196,8 +199,8 @@ async function refresh(){
  $('pauseBot').disabled=!!s.operator_paused||!!s.bot_stopped;
  $('runBot').disabled=!s.operator_paused||!!s.bot_stopped;
  $('entryProtection').textContent=s.bot_stopped?'STOPPED':s.operator_paused?'PAUSED':s.halted?'HALTED':'ACTIVE';
- $('entryProtection').textContent=s.halted?'HALTED':'ACTIVE';$('entryProtection').className='number '+(s.halted?'bad':'good');
- const protectionLabels={LEGACY_HISTORY_REQUIRES_RECONCILIATION:'Legacy trade history has no trusted wallet checkpoint. Manual reconciliation required.',CHECKPOINT_INVALID:'Saved wallet checkpoint cannot be validated.',RISK_LIMIT_OR_RESTORED_HALT:'Risk limit reached or halt restored from a previous session. Review account audit.',NONE:'New entries permitted only when all strategy and risk gates pass.'};
+ $('entryProtection').className='number '+(s.bot_stopped||s.operator_paused||s.halted?'bad':'good');
+ const protectionLabels={STOP_COOLDOWN_5M:'Five-minute re-entry cooldown after a stop loss.',PERFORMANCE_CIRCUIT_BREAKER:'Performance limit reached; new entries blocked.',LEGACY_HISTORY_REQUIRES_RECONCILIATION:'Legacy trade history has no trusted wallet checkpoint. Manual reconciliation required.',CHECKPOINT_INVALID:'Saved wallet checkpoint cannot be validated.',RISK_LIMIT_OR_RESTORED_HALT:'Risk limit reached or halt restored from a previous session. Review account audit.',NONE:'New entries permitted only when all strategy and risk gates pass.'};
  $('entryProtectionReason').textContent=s.bot_stopped?'All background workers stopped; dashboard remains available.':s.operator_paused?'Operator paused new entries. Existing positions continue to be managed.':protectionLabels[s.halt_diagnostic]||s.halt_diagnostic||'—';
  const progressCell=m=>{
   const fresh=m.price_fresh===true && Number.isFinite(m.stop_target_progress_pct);
@@ -244,8 +247,11 @@ async function control(action){
  if(!token)return;
  try{
  const r=await fetch('/control/'+action,{method:'POST',credentials:'same-origin',headers:{'X-Scalper-CSRF':'1',...(fallbackAdminToken?{'X-Admin-Token':fallbackAdminToken}:{})}});
- if(!r.ok)throw Error('Control API '+r.status);
- await refresh();
+ if(!r.ok){const err=await r.json().catch(()=>({}));throw Error(err.detail||'Control API '+r.status)}
+ const outcome=await r.json();
+ const state=await fetchJSON('/status');
+ $('notice').textContent='Command confirmed · BOT '+state.bot_state;
+ busy=false;await refresh();
  }catch(err){$('notice').textContent=err.message}
 }
 $('pauseBot').onclick=()=>control('pause');
