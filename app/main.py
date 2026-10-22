@@ -210,7 +210,7 @@ async def prime_candles(client, symbols):
             start=int(bar[0])
             if start+duration <= now_ms:
                 engine.on_candle(symbol,interval,start,float(bar[4]))
-                if interval=="1":indicators.ingest_closed_candle(symbol,start,float(bar[2]),float(bar[3]),float(bar[4]))
+                if interval=="1":indicators.ingest_closed_candle(symbol,start,float(bar[2]),float(bar[3]),float(bar[4]),float(bar[5]))
     for symbol in symbols:
         for interval in ("1","3"):
             try:
@@ -266,7 +266,7 @@ async def market_stream():
                             for bar in event.get("data", []):
                                 if bar.get("confirm") is True:
                                     engine.on_candle(symbol, str(bar.get("interval")), int(bar.get("start")), float(bar.get("close")))
-                                    if str(bar.get("interval"))=="1":indicators.ingest_closed_candle(symbol,int(bar["start"]),float(bar["high"]),float(bar["low"]),float(bar["close"]))
+                                    if str(bar.get("interval"))=="1":indicators.ingest_closed_candle(symbol,int(bar["start"]),float(bar["high"]),float(bar["low"]),float(bar["close"]),float(bar["volume"]))
                         continue
                     if not topic.startswith("orderbook.50."): continue
                     data = event.get("data", {})
