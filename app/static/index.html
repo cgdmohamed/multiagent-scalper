@@ -1,49 +1,113 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bybit Scalper Research Dashboard</title><style>
-:root{color-scheme:dark;font:14px system-ui;background:#0b1020;color:#e6eaf3}*{box-sizing:border-box}body{max-width:1250px;margin:0 auto;padding:25px}header,.flex{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}h1{font-size:23px;margin:0}h2{font-size:16px;margin:0 0 14px}small,.muted{color:#98a6c0}.panel,.tile{background:#151d30;border:1px solid #2b3854;border-radius:12px;padding:18px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px;margin:20px 0}.big{font-size:25px;font-weight:700;margin-top:10px}.columns{display:grid;grid-template-columns:1fr 1fr;gap:15px}@media(max-width:800px){.columns{grid-template-columns:1fr}}table{width:100%;border-collapse:collapse;font-size:12px}td,th{text-align:left;padding:9px 7px;border-bottom:1px solid #303c55}th{color:#9aaaca}.scroll{overflow:auto;max-height:390px}input,button{background:#26344f;color:white;border:1px solid #415171;border-radius:7px;padding:10px}button{cursor:pointer}input{max-width:220px}.ok{color:#64d9a4}.bad{color:#ff9a9a}.banner{margin-top:16px;color:#f6d78f}.danger{color:#ffadad}</style></head><body>
-<header><div><h1>Bybit Multi-Agent Scalper</h1><small>Research dashboard · FUTURES PAPER ONLY · 1x · NO LIVE ORDERS</small></div><div><input id="token" type="password" placeholder="Admin token (session only)" aria-label="Admin token"><button id="connect">Connect</button></div></header>
-<div class="banner" id="notice">Enter ADMIN_TOKEN to load dashboard. This page never stores your token on disk.</div><div class="muted" id="liveStatus" role="status">Auto refresh: awaiting connection</div>
-<section class="cards"><div class="tile"><small>Equity (USDT)</small><div class="big" id="equity">—</div></div><div class="tile"><small>Paper cash</small><div class="big" id="cash">—</div></div><div class="tile"><small>Open positions</small><div class="big" id="positions">—</div></div><div class="tile"><small>Realized P&L</small><div class="big" id="pnl">—</div></div><div class="tile"><small>Unrealized P&L (est.)</small><div class="big" id="upnl">—</div></div><div class="tile"><small>Data feed</small><div class="big" id="feed">—</div></div><div class="tile"><small>AI mode</small><div class="big" id="ai">—</div></div></section>
-<div class="columns"><div class="panel"><h2>News intelligence (shadow only)</h2><div id="newsHealth" class="muted">Not connected</div><div class="scroll"><table><thead><tr><th>UTC</th><th>Headline</th><th>Pairs</th><th>Event risk</th></tr></thead><tbody id="newsRows"></tbody></table></div></div><div class="panel"><h2>Ranked pairs</h2><div class="scroll"><table><thead><tr><th>Symbol</th><th>Score</th><th>Spread bps</th><th>24h turnover</th></tr></thead><tbody id="pairs"></tbody></table></div></div><div class="panel"><h2>Current positions</h2><div class="scroll"><table><thead><tr><th>Pair</th><th>Qty</th><th>Entry</th><th>Exit mark</th><th>U.P&L</th><th>Stop</th><th>Target</th></tr></thead><tbody id="open"></tbody></table></div></div><div class="panel"><h2>Latest decisions</h2><div class="scroll"><table><thead><tr><th>Symbol</th><th>Direction</th><th>Verdict</th><th>Reason</th></tr></thead><tbody id="decisions"></tbody></table></div></div><div class="panel"><h2>Trades and shadow AI reviews</h2><div class="scroll"><h3>Trades</h3><table><tbody id="trades"></tbody></table><h3>Shadow AI (no order authority)</h3><div class="muted" id="aiHealth">—</div><table><tbody id="reviews"></tbody></table></div></div></div>
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Scalper Terminal — Futures Paper</title>
+<style>
+:root{color-scheme:dark;--bg:#0b0e11;--panel:#171b21;--panel2:#1e242d;--line:#2b3139;--text:#f3f5f7;--muted:#8994a3;--gold:#f0b90b;--green:#02c076;--red:#f6465d;--blue:#42a5f5;font:14px Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
+*{box-sizing:border-box}body{margin:0}button,input{font:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--gold);outline-offset:2px}.app{max-width:1540px;margin:auto;padding:24px 28px 50px}
+header{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:20px}.brand{display:flex;align-items:center;gap:13px}.brand-icon{display:grid;place-items:center;width:44px;height:44px;border-radius:13px;background:#f0b90b22;color:var(--gold)}h1{font-size:22px;margin:0;letter-spacing:-.7px}h2{font-size:16px;margin:0;display:flex;align-items:center;gap:9px}h3{font-size:13px;margin:0 0 10px}.sub{font-size:12px;color:var(--muted);margin-top:5px}.auth{display:flex;gap:9px;flex-wrap:wrap}input{background:#101419;border:1px solid var(--line);color:var(--text);padding:11px 14px;border-radius:9px;min-width:200px}button{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:9px;padding:10px 14px}button.active,.primary{background:var(--gold);color:#131313;border-color:var(--gold);font-weight:700}.tag{border-radius:6px;padding:4px 8px;font-size:11px;font-weight:750;letter-spacing:.25px;display:inline-block;background:#353942;color:#c5cbd4}.tag.long,.tag.approve,.tag.buy{background:#02c07622;color:var(--green)}.tag.short,.tag.veto,.tag.sell{background:#f6465d22;color:var(--red)}.tag.skip,.tag.hold{background:#f0b90b18;color:var(--gold)}.tag.error{background:#f6465d25;color:var(--red)}.tag.ok{background:#02c07622;color:var(--green)}
+.statusline{margin:18px 0;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;color:var(--muted);font-size:12px}.dot{width:7px;height:7px;border-radius:100%;display:inline-block;background:var(--muted);margin-right:7px}.dot.live{background:var(--green);box-shadow:0 0 12px #02c07680}.notice{color:#c2a966;font-size:12px}
+.stats{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:11px;margin:18px 0 22px}.tile,.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px}.tile{padding:15px;min-width:0}.tilehead{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}.icon{width:18px;height:18px;flex-shrink:0}.tile .number{font-weight:750;font-size:23px;letter-spacing:-.5px;margin-top:13px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.good{color:var(--green)}.bad{color:var(--red)}.muted{color:var(--muted)}.grid{display:grid;grid-template-columns:1.12fr .88fr;gap:16px}.panel{padding:19px;min-width:0}.panelbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:15px}.panelbar .muted{font-size:12px}.wide{grid-column:1/-1}.scroll{max-height:465px;overflow:auto}table{width:100%;border-collapse:collapse;font-size:12px}th{text-align:left;color:var(--muted);font-size:11px;font-weight:600;position:sticky;top:0;background:var(--panel);z-index:1}td,th{padding:13px 10px;border-bottom:1px solid #292f38;vertical-align:middle}td{font-variant-numeric:tabular-nums}td:first-child,th:first-child{padding-left:0}.symbol{font-weight:700;color:var(--text)}.direction{font-weight:700}.soft{font-size:11px;color:var(--muted)}.decisions{display:grid;gap:9px}.decision{background:#12171d;border:1px solid var(--line);border-radius:10px;padding:13px 15px}.decision-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.decision-body{color:#c4cbd3;font-size:13px;line-height:1.65;margin-top:9px}.decision-title{font-weight:700;color:var(--text)}.decision-meta{display:flex;gap:7px;flex-wrap:wrap;align-items:center}details{margin-top:9px}summary{color:var(--gold);font-size:11px;cursor:pointer}pre{white-space:pre-wrap;word-break:break-word;color:#aeb8c4;background:#0c1015;padding:10px;border-radius:7px;font-size:11px}.ai-review{padding:12px 0;border-bottom:1px solid var(--line)}.agent-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:11px}.agent{border:1px solid var(--line);border-radius:8px;background:#11171e;padding:10px;min-width:0}.agentname{font-size:11px;color:var(--muted);margin-bottom:6px}.agentreason{font-size:11px;line-height:1.5;color:#c0c8d1;margin-top:8px;overflow-wrap:anywhere}.empty{padding:24px 10px;color:var(--muted);text-align:center;font-size:12px}.toolbar{display:flex;align-items:center;gap:7px}.toolbar button{padding:7px 10px;font-size:12px}.price{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.section-foot{margin-top:10px;font-size:11px;color:var(--muted)}.news-item{padding:11px 0;border-bottom:1px solid var(--line)}.news-title{font-size:12px;line-height:1.5}.news-meta{display:flex;gap:8px;margin-top:6px;font-size:11px;color:var(--muted)}
+@media(max-width:1250px){.stats{grid-template-columns:repeat(4,minmax(0,1fr))}.agent-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:850px){.grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.agent-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.app{padding:16px}.panel{padding:15px}}@media(max-width:480px){.stats{gap:8px}.tile{padding:12px}.tile .number{font-size:19px}header h1{font-size:18px}.auth input{min-width:150px;max-width:200px}}
+</style></head>
+<body><div class="app">
+<header><div class="brand"><span class="brand-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 17 6-6 4 4 8-9"/><path d="M15 6h6v6"/></svg></span><div><h1>Scalper <span style="color:var(--gold)">Terminal</span></h1><div class="sub">BYBIT LINEAR FUTURES · 1× PAPER RESEARCH · NO LIVE ORDERS</div></div></div><div class="auth"><input type="password" id="token" autocomplete="off" placeholder="Admin token" aria-label="Admin token"><button class="primary" id="connect">Connect</button></div></header>
+<div class="statusline"><div id="liveStatus"><span class="dot"></span>Awaiting connection</div><div class="notice" id="notice">Enter admin token to view private research data</div></div>
+<section class="stats">
+<div class="tile"><div class="tilehead"><span>◈</span> Equity</div><div class="number" id="equity">—</div></div>
+<div class="tile"><div class="tilehead"><span>▣</span> Available cash</div><div class="number" id="cash">—</div></div>
+<div class="tile"><div class="tilehead"><span>▥</span> Open positions</div><div class="number" id="positions">—</div></div>
+<div class="tile"><div class="tilehead"><span>↗</span> Realized P&amp;L</div><div class="number" id="pnl">—</div></div>
+<div class="tile"><div class="tilehead"><span>≈</span> Unrealized P&amp;L</div><div class="number" id="upnl">—</div></div>
+<div class="tile"><div class="tilehead"><span>◉</span> Market feed</div><div class="number" id="feed">—</div></div>
+<div class="tile"><div class="tilehead"><span>✧</span> AI review</div><div class="number" id="ai">—</div></div>
+</section>
+<main class="grid">
+<section class="panel wide"><div class="panelbar"><h2><span style="color:var(--gold)">◈</span> Open positions</h2><span class="muted">Unrealized P&amp;L estimates include exit slippage and fees</span></div><div class="scroll"><table><thead><tr><th>Instrument</th><th>Side</th><th>Quantity</th><th>Entry</th><th>Exit mark</th><th>Unrealized P&amp;L</th><th>Stop / Target</th></tr></thead><tbody id="open"></tbody></table></div></section>
+<section class="panel wide"><div class="panelbar"><h2><span style="color:var(--blue)">◉</span> Latest decisions</h2><div class="toolbar"><button id="simple" class="active">Simple</button><button id="technical">Technical</button></div></div><div class="scroll decisions" id="decisions"></div><div class="section-foot">The stated “edge” is a heuristic, not a validated profit forecast.</div></section>
+<section class="panel"><div class="panelbar"><h2><span style="color:var(--green)">↗</span> Trade history</h2><span class="muted">Paper executions</span></div><div class="scroll"><table><thead><tr><th>Event</th><th>Instrument</th><th>Price</th><th>Closed P&amp;L</th></tr></thead><tbody id="trades"></tbody></table></div></section>
+<section class="panel"><div class="panelbar"><h2><span style="color:var(--gold)">▤</span> Market watchlist</h2><span class="muted">Dynamic ranking</span></div><div class="scroll"><table><thead><tr><th>Instrument</th><th>Score</th><th>Spread (bps)</th><th>24h turnover</th></tr></thead><tbody id="pairs"></tbody></table></div></section>
+<section class="panel wide"><div class="panelbar"><h2><span style="color:var(--blue)">✧</span> Multi-agent shadow reviews</h2><span class="tag">NO ORDER AUTHORITY</span></div><div class="muted" id="aiHealth">Not connected</div><div class="scroll" id="reviews"></div></section>
+<section class="panel wide"><div class="panelbar"><h2><span style="color:var(--gold)">◷</span> News intelligence</h2><span class="muted" id="newsHealth">Not connected</span></div><div class="scroll" id="newsRows"></div></section>
+</main></div>
 <script>
-let token='';let refreshing=false,lastSnapshot='',lastChangeAt=0,lastSuccessAt=0;const POLL_MS=2000;const el=id=>document.getElementById(id);const fmt=n=>Number(n||0).toLocaleString('en-US',{maximumFractionDigits:4});const td=(...vals)=>'<tr>'+vals.map(v=>'<td>'+String(v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))+'</td>').join('')+'</tr>';
-const reasonLabels={
-'MARKET_NOT_CONFIRMED': x=> 'No confirmed LONG or SHORT: LONG requires 1m > +1 bps and 3m > 0; SHORT requires 1m < -1 bps and 3m < 0. Actual: '+num(x.market.momentum_bps)+' / '+num(x.market.trend_3m_bps)+' bps.',
-'TREND_TIMEFRAMES_CONFLICT':x=>'Timeframes disagree: 1m '+num(x.market.momentum_bps)+' bps versus 3m '+num(x.market.trend_3m_bps)+' bps. No directional entry.',
-'QUANT_NOT_CONFIRMED':x=>x.market.direction==='SHORT'?'SHORT not confirmed: imbalance '+num(x.market.imbalance)+' (needs < -0.18).':'LONG not confirmed: imbalance '+num(x.market.imbalance)+' (needs > +0.18).',
-'ADVERSARY_VETO':x=>'Directional safety veto: LONG needs imbalance >= +0.10, SHORT needs <= -0.10, and both require aligned 1m/3m trend; actual imbalance '+num(x.market.imbalance)+'.',
-'COST_EXCEEDS_HYPOTHETICAL_EDGE':x=>'Estimated round-trip cost '+num(x.market.roundtrip_cost_bps)+' bps >= heuristic gross edge '+num(x.market.estimated_edge_bps)+' bps. Edge is NOT a validated forecast.',
-'CANDLE_HISTORY_NOT_READY':x=>'Waiting for at least 4 closed 1m candles and 3 closed 3m candles; never uses tick samples as candles.',
-'SPREAD_TOO_WIDE':x=>'Spread '+num(x.market.spread_bps)+' bps exceeds configured 5 bps limit.',
-'INSUFFICIENT_HISTORY':x=>'Collecting initial orderbook samples (at least 6 required).',
-'NOT_RANKED_CANDIDATE':x=>'Pair is not in the current eligible ranking.',
-'ALREADY_IN_POSITION':x=>'An open position already exists for this pair.',
-'MAX_POSITIONS':x=>'Maximum simultaneous position count reached.',
-'CIRCUIT_BREAKER':x=>'Risk circuit breaker is active; new entries disabled.',
-'STALE_BOOK':x=>'Orderbook data is stale; no new entry allowed.',
-'INVALID_BOOK':x=>'Orderbook is invalid or crossed.',
-'INSUFFICIENT_NOTIONAL_OR_CASH':x=>'Insufficient cash or exchange minimum notional.'
+'use strict';
+let token='',busy=false,mode='simple',lastSignature='',lastChange=0,lastSuccess=0,connected=false;
+const POLL_MS=2000,$=id=>document.getElementById(id);
+const escapeHTML=v=>String(v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+const money=n=>n==null?'—':Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const precise=n=>n==null?'—':Number(n).toPrecision(7);
+const num=n=>n==null?'—':Number(n).toFixed(2);
+const row=(...items)=>'<tr>'+items.map(v=>'<td>'+v+'</td>').join('')+'</tr>';
+const cls=n=>Number(n)>=0?'good':'bad';
+const signed=n=>n==null?'—':(Number(n)>0?'+':'')+money(n);
+const badge=(v,custom)=>'<span class="tag '+escapeHTML(custom||String(v).toLowerCase())+'">'+escapeHTML(v)+'</span>';
+const reasonMap={
+ TREND_TIMEFRAMES_CONFLICT:()=>['Mixed trend signals','The 1-minute and 3-minute candles disagree. Waiting for alignment.','Wait for both timeframes to point the same way.'],
+ MARKET_NOT_CONFIRMED:()=>['Trend is not confirmed','Neither a long nor a short setup has a confirmed directional trend.','Wait for aligned momentum and trend.'],
+ QUANT_NOT_CONFIRMED:x=>['Not enough '+(x.market.direction==='SHORT'?'selling':'buying')+' pressure','Order-book depth does not support the proposed '+(x.market.direction||'trade').toLowerCase()+' yet.','Wait for stronger directional order flow.'],
+ ADVERSARY_VETO:()=>['Safety check blocked entry','Directional pressure or other safety criteria are too weak.','Avoid opening until the safety gates pass.'],
+ COST_EXCEEDS_HYPOTHETICAL_EDGE:()=>['Costs outweigh the estimated opportunity','Estimated round-trip costs are too high relative to a heuristic edge that has not been validated.','Wait for better costs or a stronger setup.'],
+ CANDLE_HISTORY_NOT_READY:()=>['Building candle history','The engine is collecting enough closed candles for a reliable signal.','Allow the historical data to fill.'],
+ SPREAD_TOO_WIDE:()=>['Spread is too wide','The buy/sell price gap exceeds the configured entry limit.','Wait for a tighter spread.'],
+ ALREADY_IN_POSITION:()=>['Position already open','A position exists on this instrument, so no duplicate entry is allowed.','Monitor the existing position.'],
+ MAX_POSITIONS:()=>['Position limit reached','The portfolio is at its maximum number of open trades.','Wait for another position to close.'],
+ CIRCUIT_BREAKER:()=>['Risk protection active','The portfolio risk circuit breaker is blocking new entries.','Review drawdown and risk limits.'],
+ STALE_BOOK:()=>['Market data is delayed','The order book is too old to trust for entry.','Wait for the data feed to recover.'],
+ INVALID_BOOK:()=>['Invalid order book','Market quotes are missing or crossed.','Do not trade on invalid prices.'],
+ NOT_RANKED_CANDIDATE:()=>['Instrument no longer eligible','This market is not in the current eligible ranking.','Wait for a fresh eligible setup.'],
+ INSUFFICIENT_NOTIONAL_OR_CASH:()=>['Not enough available cash','The candidate cannot meet minimum order size or margin rules.','Wait for adequate free margin.'],
+ INSUFFICIENT_HISTORY:()=>['Order-book warming up','Initial samples have not completed.','Wait for more samples.']
 };
-function num(n){return n==null?'N/A':Number(n).toFixed(2)}
-function readableReasons(x){return x.reasons.length?x.reasons.map(r=>(reasonLabels[r]?reasonLabels[r](x):r)).join(' | '):'All entry gates passed'}
-async function get(path,signal){const r=await fetch(path,{headers:{'X-Admin-Token':token},cache:'no-store',signal});if(!r.ok)throw Error('API '+r.status+' '+path);return r.json()}
-async function refresh(){
-if(!token||refreshing)return;
-refreshing=true;
-const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),8000);
-try{
-const [s,d,t,a,n]=await Promise.all(['/status','/decisions','/trades','/ai/status','/news/status'].map(path=>get(path,controller.signal)));
-const snapshot=JSON.stringify([s.equity,s.cash,s.positions,s.position_analytics,s.decisions,s.trades,d[0]?.decision_id,t[0]?.timestamp,a.reviews_started,a.agent_successes,a.agent_errors,n.last_update]);
-const now=Date.now();
-if(snapshot!==lastSnapshot){lastSnapshot=snapshot;lastChangeAt=now}
-lastSuccessAt=now;
-el('liveStatus').textContent='LIVE · Last API update: '+new Date(now).toLocaleTimeString()+' · Last data change: '+new Date(lastChangeAt).toLocaleTimeString()+' · Poll every 2s';
-el('newsHealth').textContent='Sources '+n.sources_ok+'/'+n.sources_total+(n.last_error?' · '+n.last_error:'');el('newsRows').innerHTML=n.items.slice(0,15).map(x=>td(new Date(x.published_at*1000).toISOString().slice(0,16),x.title,x.assets.join(', ')||'Broad market',x.high_impact?'Flagged':'Normal')).join('');el('equity').textContent=fmt(s.equity);el('cash').textContent=fmt(s.cash);el('positions').textContent=Object.keys(s.positions).length;el('pnl').textContent=fmt(s.realized_pnl??t.filter(x=>x.event==='CLOSE'||x.event==='SELL').reduce((v,x)=>v+(x.pnl||0),0));el('upnl').textContent=fmt(s.unrealized_pnl??0);el('feed').textContent=s.feed_connected?'Connected':'Offline';el('feed').className='big '+(s.feed_connected?'ok':'bad');el('ai').textContent=a.enabled?'Shadow':'Rules only';el('pairs').innerHTML=s.ranked_pairs.map(x=>td(x.symbol,fmt(x.score),fmt(x.spread_bps),fmt(x.turnover24h))).join('');el('open').innerHTML=Object.values(s.positions).map(x=>{const p=s.position_analytics?.[x.symbol]||{};return td(x.symbol+' '+(x.direction||''),fmt(x.qty),Number(x.entry).toPrecision(7),p.estimated_exit_price==null?'—':Number(p.estimated_exit_price).toPrecision(7),p.unrealized_pnl==null?'—':fmt(p.unrealized_pnl),Number(x.stop).toPrecision(7),Number(x.target).toPrecision(7))}).join('');el('decisions').innerHTML=d.slice(0,30).map(x=>td(x.symbol,x.market.direction||'NO DIRECTION',x.verdict,readableReasons(x))).join('');el('trades').innerHTML=t.slice(0,25).map(x=>td(x.event+' '+(x.direction||''),x.symbol,fmt(x.price),x.pnl===undefined?'':fmt(x.pnl))).join('');el('aiHealth').textContent='Models: '+(a.model||'off')+' / Chief: '+(a.chief_model||'off')+' · Successes: '+JSON.stringify(a.agent_successes||{})+' · Latest errors: '+JSON.stringify(a.agent_errors||{});
-el('reviews').innerHTML=a.recent_reviews.map(x=>td(x.symbol,x.baseline_verdict,x.shadow_verdict,Object.entries(x.votes).map(([role,v])=>role+': '+v.action+' ('+v.reason+')').join(' | '))).join('');el('notice').textContent=s.last_error||'Connected. Data updates every 5 seconds. Shadow AI does not control executions.' }catch(e){
-el('liveStatus').textContent='REFRESH ERROR · '+(e.name==='AbortError'?'API timeout (8s)':e.message)+' · Last successful update: '+(lastSuccessAt?new Date(lastSuccessAt).toLocaleTimeString():'never');
-el('notice').textContent='Dashboard update failed; retrying automatically.';
-}finally{clearTimeout(timeout);refreshing=false}
+function friendly(d){
+ if(d.verdict==='APPROVE')return {title:'Trade setup approved',summary:'All deterministic entry checks passed for a '+(d.market.direction||'new')+' paper position.',hint:'Paper execution is handled by the risk engine.'};
+ const primary=d.reasons.find(r=>reasonMap[r])||d.reasons[0];
+ const a=reasonMap[primary]?reasonMap[primary](d):['Entry not approved',primary||'No qualifying setup','Review the technical details.'];
+ return {title:a[0],summary:a[1],hint:a[2]};
 }
-el('connect').onclick=()=>{token=el('token').value;el('token').value='';lastSnapshot='';refresh()};
+const technicalReasons=d=>(d.reasons||[]).join(' | ')||'All entry gates passed';
+function renderDecisions(items){
+ $('decisions').innerHTML=items.length?items.slice(0,30).map(d=>{
+ const f=friendly(d),m=d.market||{},dir=m.direction||'NO DIRECTION';
+ const body=mode==='simple'?'<div class="decision-title">'+escapeHTML(f.title)+'</div><div>'+escapeHTML(f.summary)+'</div><div class="soft">Next: '+escapeHTML(f.hint)+'</div>':
+ '<div>'+escapeHTML(technicalReasons(d))+'</div><div class="soft">1m '+num(m.momentum_bps)+' bps · 3m '+num(m.trend_3m_bps)+' bps · Imbalance '+num(m.imbalance)+' · Cost '+num(m.roundtrip_cost_bps)+' bps · Edge (heuristic) '+num(m.estimated_edge_bps)+' bps</div>';
+ return '<article class="decision"><div class="decision-top"><div class="decision-meta"><span class="symbol">'+escapeHTML(d.symbol)+'</span>'+badge(dir,dir==='LONG'?'long':dir==='SHORT'?'short':'')+badge(d.verdict,d.verdict==='APPROVE'?'approve':'skip')+'</div><span class="soft">'+escapeHTML(d.created_at?new Date(d.created_at).toLocaleTimeString():'')+'</span></div><div class="decision-body">'+body+'</div><details><summary>Full diagnostic data</summary><pre>'+escapeHTML(JSON.stringify({reasons:d.reasons,market:d.market,opinions:d.opinions},null,2))+'</pre></details></article>';
+ }).join(''):'<div class="empty">No decisions received yet</div>';
+}
+function renderReviews(items){
+ const names={market:'Market',quant:'Quant',adversary:'Risk challenger',news:'News',chief:'Chief investment'};
+ $('reviews').innerHTML=items.length?items.slice(0,15).map(x=>'<div class="ai-review"><div class="decision-top"><div class="decision-meta"><span class="symbol">'+escapeHTML(x.symbol)+'</span>'+badge('Rules: '+x.baseline_verdict,x.baseline_verdict==='APPROVE'?'approve':'skip')+badge('AI: '+x.shadow_verdict,x.shadow_verdict==='SKIP'?'skip':x.shadow_verdict==='SHORT'?'short':'long')+'</div></div><div class="agent-grid">'+Object.entries(x.votes||{}).map(([role,v])=>'<div class="agent"><div class="agentname">'+escapeHTML(names[role]||role)+'</div>'+badge(v.action,v.reason&&v.reason.startsWith('API_')?'error':String(v.action).toLowerCase())+'<div class="agentreason">'+escapeHTML(v.reason)+'</div></div>').join('')+'</div></div>').join(''):'<div class="empty">No AI reviews yet</div>';
+}
+async function fetchJSON(path,signal){const r=await fetch(path,{headers:{'X-Admin-Token':token},cache:'no-store',signal});if(!r.ok)throw Error('API '+r.status+' · '+path);return r.json()}
+async function refresh(){
+ if(!token||busy)return;busy=true;const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
+ try{
+ const [s,d,t,a,n]=await Promise.all(['/status','/decisions','/trades','/ai/status','/news/status'].map(p=>fetchJSON(p,controller.signal)));
+ const now=Date.now(),signature=JSON.stringify([s.equity,s.cash,s.positions,s.position_analytics,s.decisions,s.trades,d[0]?.decision_id,t[0]?.timestamp,a.reviews_started,a.agent_successes,a.agent_errors,n.last_update]);
+ if(signature!==lastSignature){lastSignature=signature;lastChange=now}lastSuccess=now;connected=true;
+ $('liveStatus').innerHTML='<span class="dot live"></span> Live · Synced '+new Date(now).toLocaleTimeString()+' · Data changed '+new Date(lastChange).toLocaleTimeString()+' · Every 2 seconds';
+ $('notice').textContent=s.last_error||'Paper mode active. AI does not control executions.';
+ $('equity').textContent=money(s.equity);$('cash').textContent=money(s.cash);$('positions').textContent=Object.keys(s.positions||{}).length;
+ const realized=s.realized_pnl??t.filter(x=>x.event==='CLOSE').reduce((sum,x)=>sum+(x.pnl||0),0);
+ $('pnl').textContent=signed(realized);$('pnl').className='number '+cls(realized);
+ $('upnl').textContent=signed(s.unrealized_pnl??0);$('upnl').className='number '+cls(s.unrealized_pnl??0);
+ $('feed').textContent=s.feed_connected?'Online':'Offline';$('feed').className='number '+(s.feed_connected?'good':'bad');
+ $('ai').textContent=a.enabled?'Shadow':'Off';$('ai').className='number '+(a.enabled?'good':'muted');
+ $('open').innerHTML=Object.values(s.positions||{}).length?Object.values(s.positions).map(p=>{const m=s.position_analytics?.[p.symbol]||{};return row('<span class="symbol">'+escapeHTML(p.symbol)+'</span>',badge(p.direction,p.direction.toLowerCase()),escapeHTML(p.qty),'<span class="price">'+precise(p.entry)+'</span>','<span class="price">'+precise(m.estimated_exit_price)+'</span>','<span class="'+cls(m.unrealized_pnl||0)+'">'+signed(m.unrealized_pnl)+'</span>','<span class="price">'+precise(p.stop)+' / '+precise(p.target)+'</span>')}).join(''):row('<span class="muted">No open positions</span>','','','','','','');
+ $('pairs').innerHTML=(s.ranked_pairs||[]).map(p=>row('<span class="symbol">'+escapeHTML(p.symbol)+'</span>',num(p.score),num(p.spread_bps),money(p.turnover24h))).join('');
+ renderDecisions(d);
+ $('trades').innerHTML=t.length?t.slice(0,35).map(v=>row(badge(v.event+' '+(v.direction||''),v.event==='OPEN'?'hold':v.pnl>=0?'approve':'veto'),'<span class="symbol">'+escapeHTML(v.symbol)+'</span>','<span class="price">'+precise(v.price)+'</span>','<span class="'+cls(v.pnl||0)+'">'+signed(v.pnl)+'</span>')).join(''):row('<span class="muted">No paper trades</span>','','','');
+ const errors=Object.entries(a.agent_errors||{}).map(([role,e])=>role+': '+e.code);
+ $('aiHealth').textContent='Standard: '+(a.model||'off')+' · Chief: '+(a.chief_model||'off')+' · Successful calls: '+Object.values(a.agent_successes||{}).reduce((v,x)=>v+x,0)+(errors.length?' · Errors: '+errors.join(', '):' · No current errors');
+ renderReviews(a.recent_reviews||[]);
+ $('newsHealth').textContent='Sources '+n.sources_ok+'/'+n.sources_total+(n.last_error?' · Some feeds unavailable':'');
+ $('newsRows').innerHTML=(n.items||[]).slice(0,15).map(item=>'<div class="news-item"><div class="news-title">'+escapeHTML(item.title)+'</div><div class="news-meta"><span>'+escapeHTML(item.source)+'</span><span>'+escapeHTML((item.assets||[]).join(', ')||'General market')+'</span>'+badge(item.high_impact?'HIGH IMPACT':'NORMAL',item.high_impact?'veto':'')+'<span>'+new Date(item.published_at*1000).toLocaleString()+'</span></div></div>').join('')||'<div class="empty">No recent verified headlines</div>';
+ }catch(e){$('liveStatus').innerHTML='<span class="dot"></span> Update failed · '+escapeHTML(e.name==='AbortError'?'Timed out':e.message)+' · Last sync '+(lastSuccess?new Date(lastSuccess).toLocaleTimeString():'never');$('notice').textContent='Retrying automatically; existing figures may be stale.'}
+ finally{clearTimeout(timer);busy=false}
+}
+$('connect').onclick=()=>{token=$('token').value;$('token').value='';lastSignature='';refresh()};
+$('simple').onclick=()=>{mode='simple';$('simple').classList.add('active');$('technical').classList.remove('active');refresh()};
+$('technical').onclick=()=>{mode='technical';$('technical').classList.add('active');$('simple').classList.remove('active');refresh()};
 setInterval(()=>{if(!document.hidden)refresh()},POLL_MS);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()});
 </script></body></html>
