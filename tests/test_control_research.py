@@ -4,7 +4,8 @@ from app.capital_guardian import inspect
 
 def test_research_only_gate_remains_after_control_changes():
     assert engine.research_only is True
-    assert "RESEARCH_ONLY_NO_ENTRIES" in engine.gates(None,0) if False else engine.research_only
+    book=Book("BTCUSDT",100,100.01,1000,1000,1_000_000,1_000_000,100)
+    assert "RESEARCH_ONLY_NO_ENTRIES" in engine.gates(book,100)
 
 def test_control_endpoints_registered():
     found={(r.path,m) for r in app.routes for m in getattr(r,"methods",set())}
