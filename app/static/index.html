@@ -147,6 +147,15 @@ input:focus{border-color:#cfa72f;outline:none;box-shadow:0 0 0 3px #f0b90b20}
  .dashboard-summary .stats>.tile{min-height:91px;padding:12px}
  .dashboard-summary .stats>.tile .number{font-size:19px}
 }
+
+/* Fix tab contrast and maintain readable selected state on desktop/mobile */
+.tabs button.active,.tabs button.active:hover:not(:disabled),.tabs button.active:focus-visible{
+ background:#f0b90b!important;color:#101419!important;border-color:#f0b90b!important;
+ font-weight:750;box-shadow:inset 0 -2px 0 #bc8700,0 0 0 1px #f0b90b55
+}
+.tabs button:not(.active){color:#e4e9f0;background:#19222c}
+.tabs button:not(.active):hover:not(:disabled){background:#293543;color:#fff}
+#startupLog{white-space:pre-wrap!important;overflow-wrap:anywhere;word-break:normal}
 </style></head>
 <body><div class="app">
 <header><div class="brand"><span class="brand-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 17 6-6 4 4 8-9"/><path d="M15 6h6v6"/></svg></span><div><h1>Scalper <span style="color:var(--gold)">Terminal</span></h1><div class="sub">BYBIT LINEAR FUTURES · 1× PAPER RESEARCH · NO LIVE ORDERS</div></div></div><div class="auth"><input type="password" id="token" autocomplete="off" placeholder="Admin token" aria-label="Admin token"><button class="primary" id="connect">Connect</button><button id="logout" style="display:none">Log out</button><button id="pauseBot" style="display:none">Pause</button><button id="runBot" style="display:none">Run</button><button id="enablePaper" style="display:none">Enable Paper Trading</button><button id="disablePaper" style="display:none">Research Only</button><button id="stopBot" style="display:none">Stop Bot</button><button id="startBot" style="display:none">Start Bot</button></div></header>
@@ -291,7 +300,7 @@ async function refresh(){
  $('startupFill').style.width=(done/4*100)+'%';
  $('startupProgress').setAttribute('aria-valuenow',String(done));
  $('startupFill').style.background=stage==='RETRYING'?'#f6465d':stage==='RECEIVING_DATA'?'#02c076':'#f0b90b';
- $('startupLog').textContent=(startup.events||[]).slice(-6).map(e=>'['+new Date(e.at).toLocaleTimeString()+'] '+e.message).join('\\n')||'No server startup events yet';
+ $('startupLog').textContent=(startup.events||[]).slice(-6).map(e=>'['+new Date(e.at).toLocaleTimeString()+'] '+e.message).join('\n')||'No server startup events yet';
  const operating=s.bot_state||'UNKNOWN';
  $('botStateBanner').textContent='BOT '+operating+(s.research_only?' · RESEARCH ONLY: NO NEW ENTRIES':'')+(s.bot_stopped?' · All background workers stopped':s.operator_paused?' · New entries disabled':s.halted?' · Risk / performance protection active':' · Monitoring market');
  $('botStateBanner').textContent+=' · FEED '+(s.monitoring_state||'UNKNOWN')+(s.halted?' · ENTRY RISK HALTED':'');
