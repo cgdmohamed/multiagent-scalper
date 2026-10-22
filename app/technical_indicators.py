@@ -27,8 +27,8 @@ def snapshot(candles):
     # Wilder directional movement / ADX(14), seeded after sufficient bars.
     trs=[];plus=[];minus=[]
     for prev,cur in zip(bars,bars[1:]):
-        _,ph,pl,pc=prev
-        _,h,l,c=cur
+        ph,pl,pc=prev[1:4]
+        h,l,c=cur[1:4]
         hi=h-ph;lo=pl-l
         plus.append(hi if hi>lo and hi>0 else 0)
         minus.append(lo if lo>hi and lo>0 else 0)
