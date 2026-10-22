@@ -17,7 +17,7 @@ import httpx
 from .discovery import fetch_candidates, is_meme
 from .core import Book, SYMBOLS
 from .futures import FuturesPaperEngine, FuturesPosition
-from .performance import report as performance_report
+from .performance import report as performance_report, cooldown_study, account_audit
 from .radar import OpportunityRadar
 
 logger = logging.getLogger(__name__)
@@ -28,6 +28,8 @@ shadow = ShadowAgents(max_reviews=int(os.getenv("AI_MAX_REVIEWS_PER_RUN", "20"))
 shadow_reviews = []
 shadow_tasks = set()
 radar = OpportunityRadar()
+SESSION_STARTED_AT = time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime())
+PORTFOLIO_RECOVERY = "FRESH_NO_HISTORY"
 
 def record_shadow(review):
     shadow_reviews.insert(0,review)
@@ -63,6 +65,7 @@ def save_trade_batch(trades):
 
 def restore_portfolio():
     """Fail closed on uncheckpointed legacy trades; never silently reset a paper portfolio."""
+    global PORTFOLIO_RECOVERY
     if not DB_PATH.exists(): return
     with sqlite3.connect(DB_PATH) as db:
         table=db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='events'").fetchone()
@@ -71,6 +74,7 @@ def restore_portfolio():
         existing=db.execute("SELECT 1 FROM events WHERE kind='trade' LIMIT 1").fetchone()
         if row is None:
             if existing:
+                PORTFOLIO_RECOVERY="UNRECONCILED_LEGACY_HISTORY"
                 engine.halted=True
                 engine.last_error="LEGACY_TRADES_WITHOUT_CHECKPOINT: historical events preserved; portfolio halted until reconciliation"
             return
@@ -80,6 +84,7 @@ def restore_portfolio():
             if not isinstance(data["cash"],(int,float)) or data["cash"]<0:
                 raise ValueError("invalid saved cash")
             engine.cash=float(data["cash"])
+            PORTFOLIO_RECOVERY="CHECKPOINT_RESTORED"
             engine.positions=positions
             engine.peak_equity=float(data["peak_equity"])
             engine.day=data["day"]
@@ -93,6 +98,7 @@ def restore_portfolio():
             engine.order_manager.allowed_symbols.update(positions)
             engine.last_error="Restored checkpointed paper portfolio; funding and liquidation still not modeled"
         except (KeyError,ValueError,TypeError) as exc:
+            PORTFOLIO_RECOVERY="CHECKPOINT_INVALID"
             engine.halted=True
             engine.last_error=f"CORRUPT_CHECKPOINT: {type(exc).__name__}; trading halted"
 
@@ -308,6 +314,31 @@ def performance(x_admin_token: str | None=Header(default=None)):
         has_table=db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='events'").fetchone()
         rows=db.execute("SELECT payload FROM events WHERE kind='trade' ORDER BY id").fetchall() if has_table else []
     return performance_report([json.loads(r[0]) for r in rows])
+
+def load_historical_trades():
+    if not DB_PATH.exists():return []
+    with sqlite3.connect(DB_PATH) as db:
+        if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='events'").fetchone():return []
+        return [json.loads(r[0]) for r in db.execute("SELECT payload FROM events WHERE kind='trade' ORDER BY id")]
+
+
+@app.get("/accounting/audit")
+def accounting_audit(x_admin_token: str | None=Header(default=None)):
+    secure(x_admin_token)
+    trades=load_historical_trades()
+    audit=account_audit(trades,engine.cash,engine.positions,engine.cfg.initial_cash)
+    audit.update({"recovery_status":PORTFOLIO_RECOVERY,"halted":engine.halted,
+                  "session_started_at":SESSION_STARTED_AT,
+                  "current_session_realized_pnl":sum(float(t.get("pnl",0)) for t in engine.trades if t.get("event")=="CLOSE" and t.get("timestamp","")>=SESSION_STARTED_AT),
+                  "reconciliation":"UNVERIFIED" if PORTFOLIO_RECOVERY!="CHECKPOINT_RESTORED" else "RESTORED_CHECKPOINT"})
+    return audit
+
+
+@app.get("/performance/cooldown-study")
+def cooldown_analysis(x_admin_token: str | None=Header(default=None)):
+    secure(x_admin_token)
+    return cooldown_study(load_historical_trades())
+
 
 @app.get("/events")
 def events(x_admin_token: str | None=Header(default=None), limit:int=50,
