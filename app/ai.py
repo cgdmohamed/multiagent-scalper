@@ -28,6 +28,8 @@ class ShadowAgents:
         self.pending=set()
         self.max_reviews=max_reviews
         self.reviews=0
+        self.agent_errors={}
+        self.agent_successes={}
         self.news_monitor=news_monitor
 
     @property
@@ -39,7 +41,9 @@ class ShadowAgents:
                           {'role':'user','content':json.dumps(snapshot,sort_keys=True)}]}
         r=await client.post('https://api.openai.com/v1/chat/completions',json=body,
               headers={'Authorization':f'Bearer {self.key}'},timeout=12)
-        r.raise_for_status()
+        if r.is_error:
+            # Only include error category / status; never expose tokens or server response.
+            raise RuntimeError(f"OPENAI_HTTP_{r.status_code}")
         return validate_vote(json.loads(r.json()['choices'][0]['message']['content']))
 
     async def review(self, decision, callback):
@@ -56,8 +60,13 @@ class ShadowAgents:
             async with httpx.AsyncClient() as client:
                 # Sequential roles bound total API usage; each error counted, not silently voted in favor.
                 for role in ROLES:
-                    try: votes[role]=await self._vote(client,role,snapshot)
-                    except Exception as exc: votes[role]={'action':'ABSTAIN','reason':f'API_ERROR:{type(exc).__name__}'}
+                    try:
+                        votes[role]=await self._vote(client,role,snapshot)
+                        self.agent_successes[role]=self.agent_successes.get(role,0)+1
+                    except Exception as exc:
+                        code=str(exc) if str(exc).startswith("OPENAI_HTTP_") else type(exc).__name__
+                        self.agent_errors[role]={"code":code,"model":self.chief_model if role=="chief" else self.model}
+                        votes[role]={'action':'ABSTAIN','reason':f'API_ERROR:{code}'}
             callback({'decision_id':decision.decision_id,'symbol':decision.symbol,
                 'baseline_verdict':decision.verdict,'votes':votes,
                 'shadow_verdict':('LONG' if all(v['action']=='BUY' for v in votes.values()) else 'SHORT' if all(v['action']=='SELL' for v in votes.values()) else 'SKIP'),
