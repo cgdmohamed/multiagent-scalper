@@ -171,7 +171,7 @@ def secure(x_admin_token: str | None):
         raise HTTPException(403,"Unauthorized")
 
 @app.get("/health")
-def health(): return {"ok":True,"mode":"PAPER_ONLY","feed_connected":engine.feed_connected,"last_error":engine.last_error,"ranked_pairs":len(engine.candidates),"decisions":len(engine.decisions)}
+def health(): return {"ok":True,"mode":"PAPER_ONLY","feed_connected":engine.feed_connected,"ranked_pairs":len(engine.candidates),"decisions":len(engine.decisions)}
 
 @app.get("/status")
 def status(x_admin_token: str | None=Header(default=None)):
