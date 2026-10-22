@@ -3,7 +3,7 @@ from app.core import PaperEngine,Settings,Book
 from app.orders import OrderIntent
 
 def instrument(s):
-    return {'symbol':s,'status':'Trading','quoteCoin':'USDT','lotSizeFilter':{'minOrderAmt':'5','basePrecision':'0.0001'},'priceFilter':{'tickSize':'0.01'}}
+    return {'symbol':s,'status':'Trading','quoteCoin':'USDT','settleCoin':'USDT','contractType':'LinearPerpetual','lotSizeFilter':{'minNotionalValue':'5','qtyStep':'0.0001'},'priceFilter':{'tickSize':'0.01'}}
 
 def ticker(s,turnover='10000000',bid='100',ask='100.01',change='0.03'):
     return {'symbol':s,'turnover24h':turnover,'bid1Price':bid,'ask1Price':ask,'price24hPcnt':change}
