@@ -51,6 +51,57 @@ html,body{max-width:100%;overflow-x:hidden}
  .agent-grid{grid-template-columns:minmax(0,1fr)}
 }
 @media(max-width:355px){.stats{grid-template-columns:1fr 1fr}.tile .number{font-size:16px}.brand-icon{width:36px;height:36px}.sub{font-size:10px}}
+
+/* Terminal UI refinement — visual changes only, no execution logic */
+:root{--bg:#0a0e13;--panel:#141a22;--panel2:#202834;--line:#29323e;--text:#f0f4f8;--muted:#96a4b5}
+body{background:radial-gradient(ellipse 75% 44% at 50% -20%,#1d2530 0%,transparent 85%),var(--bg);line-height:1.45}
+.app{max-width:1550px;padding-top:24px}
+header{padding:0 0 22px;gap:20px}
+.brand-icon{width:48px;height:48px;border:1px solid #f0b90b32;background:linear-gradient(145deg,#3a3013,#211d12);box-shadow:inset 0 1px #ffffff12}
+h1{font-size:24px;letter-spacing:-.9px}
+.sub{letter-spacing:.06em;font-size:10px}
+button{transition:background .16s,border-color .16s,transform .16s,box-shadow .16s;font-weight:600}
+button:hover:not(:disabled){border-color:#647285;background:#293543}
+button.primary:hover:not(:disabled),button.active:hover:not(:disabled){background:#ffca31;border-color:#ffca31}
+button:active:not(:disabled){transform:translateY(1px)}
+button:disabled{opacity:.42;cursor:not-allowed}
+.auth{gap:8px}
+.auth button{min-height:40px}
+.auth #enablePaper{border-color:#a47b23;color:#ffd475;background:#3b2e17}
+.auth #enablePaper:hover:not(:disabled){background:#59421b}
+.auth #disablePaper{border-color:#567466;color:#c8e9d9;background:#1d352d}
+.auth #runBot,.auth #startBot{border-color:#2d6a52;color:#a9f2cf;background:#17382b}
+.auth #pauseBot{border-color:#725e2a;color:#f4d58a;background:#362c1c}
+.auth #logout{order:9}
+#botStateBanner{font-size:12px!important;letter-spacing:.02em;line-height:1.6!important;background:#171c22;border-radius:11px!important;word-break:break-word;box-shadow:inset 3px 0 0 var(--gold)}
+#startupPanel{border-color:var(--line)!important;background:linear-gradient(135deg,#19212c,#141a22 72%);border-radius:13px!important;padding:17px 20px!important;box-shadow:0 12px 25px #00000015}
+#startupPanel strong{font-size:14px;letter-spacing:.01em}
+#startupStage{font-weight:700;color:#d6e0eb;font-size:11px}
+#startupProgress{height:8px!important;margin:13px 0!important;border:1px solid #434b53}
+#startupLog{white-space:pre-line!important;line-height:1.85!important;color:#a6b8c9!important;padding:8px 11px;background:#0b121a;border:1px solid #29323e;border-radius:8px;max-height:126px!important;overflow-wrap:anywhere}
+#paperModeFeedback{border-left:3px solid #a6812a;padding:8px 11px!important;margin:12px 0!important;background:#34291235;border-radius:0 7px 7px 0;line-height:1.6}
+.statusline{margin:13px 0 17px;padding:0 2px}
+.stats{gap:12px;margin:16px 0 26px}
+.tile{padding:18px 19px;min-height:117px;border-radius:13px;position:relative;overflow:hidden;box-shadow:0 8px 20px #00000015;transition:border-color .15s,transform .15s}
+.tile:before{content:"";position:absolute;left:0;right:0;top:0;height:1px;background:linear-gradient(90deg,#ffffff13,transparent)}
+.tile:hover{border-color:#526173;transform:translateY(-1px)}
+.tilehead{font-size:12px;letter-spacing:.01em}
+.tile .number{font-size:26px;font-weight:760;margin-top:12px}
+.panel{border-radius:13px;box-shadow:0 8px 24px #00000012}
+.panelbar{border-bottom:1px solid #ffffff0c;padding-bottom:12px}
+.tabs{gap:7px;margin:7px 0 11px;padding-bottom:10px}
+.tabs button{font-size:12px;background:#19222c;padding:11px 15px;border-radius:10px}
+.tabs button.active{box-shadow:inset 0 -3px 0 #c28c00,0 0 0 1px #f0b90b33}
+th{background:#19212b;color:#b0bdcc;letter-spacing:.03em}
+tbody tr:hover td{background:#ffffff05}
+td,th{padding-top:12px;padding-bottom:12px}
+.scroll{scrollbar-width:thin;scrollbar-color:#46515e transparent}
+.decision{background:#111923;border-color:#2a3440}
+input:focus{border-color:#cfa72f;outline:none;box-shadow:0 0 0 3px #f0b90b20}
+@media(max-width:900px){.app{padding-top:16px}.stats{gap:9px}.tile{min-height:105px;padding:14px}.tile .number{font-size:22px}}
+@media(max-width:580px){#startupPanel{padding:13px!important}#startupStage{max-width:52%;text-align:right}.brand-icon{width:42px;height:42px}h1{font-size:21px}.sub{font-size:9px}.tile .number{font-size:20px}.stats{margin:13px 0 20px}.auth #enablePaper,.auth #disablePaper{grid-column:1/-1}}
+@media(prefers-reduced-motion:reduce){.tile,button{transition:none}.tile:hover{transform:none}}
+
  </style></head>
 <body><div class="app">
 <header><div class="brand"><span class="brand-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 17 6-6 4 4 8-9"/><path d="M15 6h6v6"/></svg></span><div><h1>Scalper <span style="color:var(--gold)">Terminal</span></h1><div class="sub">BYBIT LINEAR FUTURES · 1× PAPER RESEARCH · NO LIVE ORDERS</div></div></div><div class="auth"><input type="password" id="token" autocomplete="off" placeholder="Admin token" aria-label="Admin token"><button class="primary" id="connect">Connect</button><button id="logout" style="display:none">Log out</button><button id="pauseBot" style="display:none">Pause</button><button id="runBot" style="display:none">Run</button><button id="enablePaper" style="display:none">Enable Paper Trading</button><button id="disablePaper" style="display:none">Research Only</button><button id="stopBot" style="display:none">Stop Bot</button><button id="startBot" style="display:none">Start Bot</button></div></header>
