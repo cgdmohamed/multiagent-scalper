@@ -102,7 +102,29 @@ input:focus{border-color:#cfa72f;outline:none;box-shadow:0 0 0 3px #f0b90b20}
 @media(max-width:580px){#startupPanel{padding:13px!important}#startupStage{max-width:52%;text-align:right}.brand-icon{width:42px;height:42px}h1{font-size:21px}.sub{font-size:9px}.tile .number{font-size:20px}.stats{margin:13px 0 20px}.auth #enablePaper,.auth #disablePaper{grid-column:1/-1}}
 @media(prefers-reduced-motion:reduce){.tile,button{transition:none}.tile:hover{transform:none}}
 
- </style></head>
+ 
+/* Desktop KPI hierarchy: portfolio row, monitoring and controls row. */
+@media(min-width:1101px){
+ .stats{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:12px;align-items:stretch}
+ .stats>.tile:nth-child(1){grid-column:span 3}
+ .stats>.tile:nth-child(2){grid-column:span 3}
+ .stats>.tile:nth-child(3){grid-column:span 2}
+ .stats>.tile:nth-child(4){grid-column:span 2}
+ .stats>.tile:nth-child(5){grid-column:span 2}
+ .stats>.tile:nth-child(6){grid-column:span 3}
+ .stats>.tile:nth-child(7){grid-column:span 3}
+ .stats>.tile:nth-child(8){grid-column:span 2}
+ .stats>.tile:nth-child(9){grid-column:span 4}
+ .stats>.tile:nth-child(9) .number{font-size:21px}
+ .stats>.tile{min-height:112px;display:flex;flex-direction:column;justify-content:center}
+ .stats>.tile:nth-child(n+6){background:linear-gradient(145deg,#19212b,#131a22)}
+ .stats>.tile:nth-child(9){border-color:#625132}
+}
+@media(min-width:901px) and (max-width:1100px){
+ .stats{grid-template-columns:repeat(4,minmax(0,1fr))}
+ .stats>.tile:last-child{grid-column:span 2}
+}
+</style></head>
 <body><div class="app">
 <header><div class="brand"><span class="brand-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 17 6-6 4 4 8-9"/><path d="M15 6h6v6"/></svg></span><div><h1>Scalper <span style="color:var(--gold)">Terminal</span></h1><div class="sub">BYBIT LINEAR FUTURES · 1× PAPER RESEARCH · NO LIVE ORDERS</div></div></div><div class="auth"><input type="password" id="token" autocomplete="off" placeholder="Admin token" aria-label="Admin token"><button class="primary" id="connect">Connect</button><button id="logout" style="display:none">Log out</button><button id="pauseBot" style="display:none">Pause</button><button id="runBot" style="display:none">Run</button><button id="enablePaper" style="display:none">Enable Paper Trading</button><button id="disablePaper" style="display:none">Research Only</button><button id="stopBot" style="display:none">Stop Bot</button><button id="startBot" style="display:none">Start Bot</button></div></header>
 <div id="botStateBanner" role="status" style="margin-top:14px;padding:13px;border:1px solid #4e5761;border-radius:10px;font-weight:750">Bot status: waiting for authentication</div><div id="paperModeFeedback" role="status" style="margin:10px 0;color:#aab5c3;font-size:12px"></div><div id="startupPanel" style="margin-top:12px;border:1px solid #2b3139;border-radius:10px;padding:12px 15px">
