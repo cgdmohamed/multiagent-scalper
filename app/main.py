@@ -219,7 +219,9 @@ def ai_status(x_admin_token: str | None=Header(default=None)):
     secure(x_admin_token)
     return {"enabled":shadow.enabled,"mode":"SHADOW_ONLY","model":shadow.model if shadow.enabled else None,
             "reviews_started":shadow.reviews,"max_reviews_per_run":shadow.max_reviews,
-            "recent_reviews":shadow_reviews[:30],"orders_controlled_by_ai":False}
+            "recent_reviews":shadow_reviews[:30],"orders_controlled_by_ai":False,
+            "chief_model":shadow.chief_model if shadow.enabled else None,
+            "agent_errors":shadow.agent_errors,"agent_successes":shadow.agent_successes}
 
 @app.get("/news/status")
 def news_status(x_admin_token: str | None=Header(default=None)):
