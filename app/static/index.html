@@ -54,7 +54,11 @@ html,body{max-width:100%;overflow-x:hidden}
  </style></head>
 <body><div class="app">
 <header><div class="brand"><span class="brand-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 17 6-6 4 4 8-9"/><path d="M15 6h6v6"/></svg></span><div><h1>Scalper <span style="color:var(--gold)">Terminal</span></h1><div class="sub">BYBIT LINEAR FUTURES · 1× PAPER RESEARCH · NO LIVE ORDERS</div></div></div><div class="auth"><input type="password" id="token" autocomplete="off" placeholder="Admin token" aria-label="Admin token"><button class="primary" id="connect">Connect</button><button id="logout" style="display:none">Log out</button><button id="pauseBot" style="display:none">Pause</button><button id="runBot" style="display:none">Run</button><button id="stopBot" style="display:none">Stop Bot</button><button id="startBot" style="display:none">Start Bot</button></div></header>
-<div id="botStateBanner" role="status" style="margin-top:14px;padding:13px;border:1px solid #4e5761;border-radius:10px;font-weight:750">Bot status: waiting for authentication</div><div class="statusline"><div id="liveStatus"><span class="dot"></span>Awaiting connection</div><div class="notice" id="notice">Enter admin token to view private research data</div></div>
+<div id="botStateBanner" role="status" style="margin-top:14px;padding:13px;border:1px solid #4e5761;border-radius:10px;font-weight:750">Bot status: waiting for authentication</div><div id="startupPanel" style="margin-top:12px;border:1px solid #2b3139;border-radius:10px;padding:12px 15px">
+  <div style="display:flex;justify-content:space-between;gap:10px"><strong>Research Startup</strong><span id="startupStage" class="soft">Awaiting connection</span></div>
+  <div role="progressbar" id="startupProgress" aria-label="Research startup progress" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0" style="height:7px;background:#30363d;border-radius:8px;overflow:hidden;margin:10px 0"><div id="startupFill" style="height:100%;width:0%;background:#f0b90b;transition:width .25s"></div></div>
+  <div id="startupLog" role="log" aria-live="polite" style="font:12px ui-monospace,monospace;color:#aab5c3;max-height:110px;overflow:auto">Start research to see verified server events.</div>
+</div><div class="statusline"><div id="liveStatus"><span class="dot"></span>Awaiting connection</div><div class="notice" id="notice">Enter admin token to view private research data</div></div>
 <section class="stats">
 <div class="tile"><div class="tilehead"><span>◈</span> Equity</div><div class="number" id="equity">—</div></div>
 <div class="tile"><div class="tilehead"><span>▣</span> Available cash</div><div class="number" id="cash">—</div></div>
@@ -184,6 +188,14 @@ async function refresh(){
  const now=Date.now(),signature=JSON.stringify([s.equity,s.cash,s.positions,s.position_analytics,s.decisions,s.trades,d[0]?.decision_id,t[0]?.timestamp,a.reviews_started,a.agent_successes,a.agent_errors,n.last_update]);
  if(signature!==lastSignature){lastSignature=signature;lastChange=now}lastSuccess=now;connected=true;
  $('liveStatus').innerHTML='<span class="dot live"></span> Live · Synced '+new Date(now).toLocaleTimeString()+' · Data changed '+new Date(lastChange).toLocaleTimeString()+' · Every 2 seconds';
+ const stages={IDLE:0,WORKERS_STARTED:1,DISCOVERY:1,CANDLES:2,CONNECTING:3,SUBSCRIBED:3,RECEIVING_DATA:4};
+ const startup=s.startup||{},stage=s.bot_stopped?'STOPPED':startup.stage||'IDLE';
+ const done=stage==='STOPPED'?0:(stages[stage]||0);
+ $('startupStage').textContent=stage+(stage==='RECEIVING_DATA'?' · Market receiving data':stage==='RETRYING'?' · Connection retrying':'');
+ $('startupFill').style.width=(done/4*100)+'%';
+ $('startupProgress').setAttribute('aria-valuenow',String(done));
+ $('startupFill').style.background=stage==='RETRYING'?'#f6465d':stage==='RECEIVING_DATA'?'#02c076':'#f0b90b';
+ $('startupLog').textContent=(startup.events||[]).slice(-6).map(e=>'['+new Date(e.at).toLocaleTimeString()+'] '+e.message).join('\\n')||'No server startup events yet';
  const operating=s.bot_state||'UNKNOWN';
  $('botStateBanner').textContent='BOT '+operating+(s.research_only?' · RESEARCH ONLY: NO NEW ENTRIES':'')+(s.bot_stopped?' · All background workers stopped':s.operator_paused?' · New entries disabled':s.halted?' · Risk / performance protection active':' · Monitoring market');
  $('botStateBanner').textContent+=' · FEED '+(s.monitoring_state||'UNKNOWN')+(s.halted?' · ENTRY RISK HALTED':'');
