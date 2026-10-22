@@ -14,6 +14,7 @@ class StrategyLab:
         mid=book.mid
         previous=self.last_quotes.get(sym)
         self.last_quotes[sym]=(now,mid)
+        changed=[]
         for item in list(self.pending):
             if item["symbol"]!=sym:continue
             age=now-item["at_ms"]
@@ -22,9 +23,10 @@ class StrategyLab:
                 if age>=horizon and key not in item["returns"]:
                     move=(mid/item["entry"]-1)*(1 if item["direction"]=="LONG" else -1)*10000
                     item["returns"][key]=round(move-item["cost_bps"],3)
+                    changed.append(item)
             if age>=900000:
                 self.pending.remove(item)
-        if m1 is None or m3 is None or book.spread_bps>5:return
+        if m1 is None or m3 is None or book.spread_bps>5:return changed
         imbalance=book.imbalance
         regime="TRENDING" if abs(m1)>15 and m1*m3>0 else "CHOPPY" if abs(m1)>10 and m1*m3<=0 else "QUIET" if abs(m1)<8 else "MIXED"
         signals={}
@@ -42,8 +44,11 @@ class StrategyLab:
                   "timestamp":datetime.fromtimestamp(now/1000,timezone.utc).isoformat(),
                   "entry":mid,"cost_bps":round(24+book.spread_bps,2),"regime":regime,
                   "returns":{}}
+            item["id"]=f"{sym}:{strategy}:{now}"
             self.samples.appendleft(item)
+            changed.append(item)
             self.pending.append(item)
+        return changed
     def report(self):
         stats={}
         for name in ("TREND_SCALP","MOMENTUM_BREAKOUT","ORDERBOOK_PRESSURE_PROXY"):
@@ -52,5 +57,5 @@ class StrategyLab:
             stats[name]={"signals":len(rows),"observed_15m":len(measured),
                          "avg_15m_net_bps":round(sum(measured)/len(measured),2) if measured else None,
                          "positive_15m_pct":round(100*sum(x>0 for x in measured)/len(measured),2) if measured else None}
-        return {"mode":"RESEARCH_ONLY","execution":"NONE","price_basis":"mid_quote","note":"Indicative fixed-horizon net returns, not realized fills or stop/target simulations. Orderbook pressure is not executed trade flow. Samples kept in memory for this run.", "strategies":stats,
+        return {"mode":"RESEARCH_ONLY","execution":"NONE","price_basis":"mid_quote","note":"Indicative fixed-horizon net returns, not realized fills or stop/target simulations. Orderbook pressure is not executed trade flow. Samples are checkpointed in SQLite when configured.", "strategies":stats,
                 "latest":list(self.samples)[:15]}
