@@ -3,6 +3,7 @@ from collections import defaultdict,deque
 from datetime import datetime,timezone
 import math
 import time
+from .technical_indicators import snapshot as technical_snapshot
 
 class ResearchIndicators:
     def __init__(self):
@@ -54,4 +55,5 @@ class ResearchIndicators:
                 "cvd_prior_90s":round(previous,3) if tape else None,
                 "notional_2m":round(notional,3),"atr_1m_14":atr,
                 "atr_bps":round(atr/close*10000,2) if atr and close else None,
-                "public_trades":len(tape),"closed_1m_bars":len(candles)}
+                "public_trades":len(tape),"closed_1m_bars":len(candles),
+                "technical":technical_snapshot(candles)}
