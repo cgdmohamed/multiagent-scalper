@@ -37,9 +37,12 @@ class ShadowAgents:
     def enabled(self): return bool(self.key)
 
     async def _vote(self, client, role, snapshot):
-        body={'model':self.chief_model if role == 'chief' else self.model, 'reasoning_effort':'low', 'response_format':{'type':'json_object'},
+        chosen_model=self.chief_model if role == 'chief' else self.model
+        body={'model':chosen_model, 'response_format':{'type':'json_object'},
               'messages':[{'role':'system','content':f'{ROLES[role]} Return only JSON with action (BUY=LONG/SELL=SHORT/HOLD/VETO/ABSTAIN) and reason. No financial guarantees.'},
                           {'role':'user','content':json.dumps(snapshot,sort_keys=True)}]}
+        if chosen_model.startswith(('gpt-5','gpt-6')):
+            body['reasoning_effort']='low'
         r=await client.post('https://api.openai.com/v1/chat/completions',json=body,
               headers={'Authorization':f'Bearer {self.key}'},timeout=12)
         if r.is_error:
