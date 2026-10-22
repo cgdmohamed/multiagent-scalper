@@ -29,6 +29,7 @@ from .historical_research import download as download_history, load as load_hist
 from .research_indicators import ResearchIndicators
 from .capital_guardian import inspect as guardian_inspect,configure_engine
 from .strategy_optimizer import evaluate as evaluate_candidates
+from .signal_replay import replay_signals
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -638,6 +639,27 @@ def research_backtest(symbol: str="BTCUSDT",interval: str="1",x_admin_token: str
     result=replay_history(load_history(DB_PATH,symbol.upper(),interval))
     result.update({"symbol":symbol.upper(),"interval":interval,"mode":"RESEARCH_ONLY","strategy":"CANDLE_MOMENTUM_PROTOTYPE"})
     return result
+
+
+@app.get("/research/strategy-replay")
+def research_strategy_replay(x_admin_token: str | None=Header(default=None)):
+    secure(x_admin_token)
+    if not engine.research_only:raise HTTPException(409,"Strategy replay requires RESEARCH_ONLY")
+    signals=list(lab.samples)
+    symbols=sorted({row.get("symbol") for row in signals if row.get("symbol")})
+    # Reuse only stored public one-minute candles. Never fetch synchronously
+    # inside request, never synthesize order-book indicators from OHLC.
+    bars={sym:load_history(DB_PATH,sym,"1") for sym in symbols}
+    report=replay_signals(signals,bars,
+                          fee_bps=engine.cfg.taker_fee_bps,
+                          slippage_bps=engine.cfg.slippage_bps_per_side,
+                          stop_bps=engine.cfg.stop_bps,
+                          target_bps=engine.cfg.target_bps,
+                          hold_minutes=int(engine.cfg.max_hold_ms//60000))
+    report["available_history_symbols"]=[sym for sym,items in bars.items() if items]
+    report["missing_history_symbols"]=[sym for sym,items in bars.items() if not items]
+    report["observed_signals"]=len(signals)
+    return report
 
 
 @app.get("/research/positioning")
