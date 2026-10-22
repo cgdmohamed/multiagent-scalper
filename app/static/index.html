@@ -53,8 +53,8 @@ html,body{max-width:100%;overflow-x:hidden}
 @media(max-width:355px){.stats{grid-template-columns:1fr 1fr}.tile .number{font-size:16px}.brand-icon{width:36px;height:36px}.sub{font-size:10px}}
  </style></head>
 <body><div class="app">
-<header><div class="brand"><span class="brand-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 17 6-6 4 4 8-9"/><path d="M15 6h6v6"/></svg></span><div><h1>Scalper <span style="color:var(--gold)">Terminal</span></h1><div class="sub">BYBIT LINEAR FUTURES · 1× PAPER RESEARCH · NO LIVE ORDERS</div></div></div><div class="auth"><input type="password" id="token" autocomplete="off" placeholder="Admin token" aria-label="Admin token"><button class="primary" id="connect">Connect</button><button id="logout" style="display:none">Log out</button><button id="pauseBot" style="display:none">Pause</button><button id="runBot" style="display:none">Run</button><button id="stopBot" style="display:none">Stop Bot</button><button id="startBot" style="display:none">Start Bot</button></div></header>
-<div id="botStateBanner" role="status" style="margin-top:14px;padding:13px;border:1px solid #4e5761;border-radius:10px;font-weight:750">Bot status: waiting for authentication</div><div id="startupPanel" style="margin-top:12px;border:1px solid #2b3139;border-radius:10px;padding:12px 15px">
+<header><div class="brand"><span class="brand-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 17 6-6 4 4 8-9"/><path d="M15 6h6v6"/></svg></span><div><h1>Scalper <span style="color:var(--gold)">Terminal</span></h1><div class="sub">BYBIT LINEAR FUTURES · 1× PAPER RESEARCH · NO LIVE ORDERS</div></div></div><div class="auth"><input type="password" id="token" autocomplete="off" placeholder="Admin token" aria-label="Admin token"><button class="primary" id="connect">Connect</button><button id="logout" style="display:none">Log out</button><button id="pauseBot" style="display:none">Pause</button><button id="runBot" style="display:none">Run</button><button id="enablePaper" style="display:none">Enable Paper Trading</button><button id="disablePaper" style="display:none">Research Only</button><button id="stopBot" style="display:none">Stop Bot</button><button id="startBot" style="display:none">Start Bot</button></div></header>
+<div id="botStateBanner" role="status" style="margin-top:14px;padding:13px;border:1px solid #4e5761;border-radius:10px;font-weight:750">Bot status: waiting for authentication</div><div id="paperModeFeedback" role="status" style="margin:10px 0;color:#aab5c3;font-size:12px"></div><div id="startupPanel" style="margin-top:12px;border:1px solid #2b3139;border-radius:10px;padding:12px 15px">
   <div style="display:flex;justify-content:space-between;gap:10px"><strong>Research Startup</strong><span id="startupStage" class="soft">Awaiting connection</span></div>
   <div role="progressbar" id="startupProgress" aria-label="Research startup progress" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0" style="height:7px;background:#30363d;border-radius:8px;overflow:hidden;margin:10px 0"><div id="startupFill" style="height:100%;width:0%;background:#f0b90b;transition:width .25s"></div></div>
   <div id="startupLog" role="log" aria-live="polite" style="font:12px ui-monospace,monospace;color:#aab5c3;max-height:110px;overflow:auto">Start research to see verified server events.</div>
@@ -212,6 +212,9 @@ async function refresh(){
  $('startBot').style.display=s.bot_stopped?'inline-block':'none';
  $('pauseBot').disabled=controlBusy||!!s.operator_paused||!!s.bot_stopped;
  $('runBot').disabled=controlBusy||(!s.operator_paused&&!s.bot_stopped&&s.monitoring_state==='CONNECTED');
+ $('enablePaper').style.display=s.research_only?'inline-block':'none';
+ $('disablePaper').style.display=s.research_only?'none':'inline-block';
+ $('paperModeFeedback').textContent=s.research_only?'Research Only · Paper activation: '+((s.paper_eligibility?.reasons||[]).join(' · ')||'Eligibility check required'):'Paper Trading enabled (simulation only).';
  $('entryProtection').textContent=s.bot_stopped?'STOPPED':s.research_only?'RESEARCH ONLY':s.operator_paused?'PAUSED':s.halted?'HALTED':'ACTIVE';
  $('entryProtection').className='number '+(s.bot_stopped||s.operator_paused||s.halted?'bad':'good');
  const protectionLabels={STOP_COOLDOWN_5M:'Five-minute re-entry cooldown after a stop loss.',PERFORMANCE_CIRCUIT_BREAKER:'Performance limit reached; new entries blocked.',LEGACY_HISTORY_REQUIRES_RECONCILIATION:'Legacy trade history has no trusted wallet checkpoint. Manual reconciliation required.',CHECKPOINT_INVALID:'Saved wallet checkpoint cannot be validated.',RISK_LIMIT_OR_RESTORED_HALT:'Risk limit reached or halt restored from a previous session. Review account audit.',NONE:'New entries permitted only when all strategy and risk gates pass.'};
@@ -288,7 +291,7 @@ function loggedIn(ok){
  token=ok?'session':'';if(!ok)fallbackAdminToken='';
  $('token').style.display=ok?'none':'';
  $('connect').style.display=ok?'none':'';
- for(const id of ['logout','pauseBot','runBot','stopBot','startBot'])$(id).style.display=ok?'inline-block':'none';
+ for(const id of ['logout','pauseBot','runBot','stopBot','startBot','enablePaper','disablePaper'])$(id).style.display=ok?'inline-block':'none';
 }
 const controlIds=['pauseBot','runBot','stopBot','startBot'];
 function controlFeedback(message,isError=false){
@@ -327,6 +330,26 @@ async function control(action){
   controlIds.forEach(id=>$(id).disabled=false);
  }
 }
+async function changePaperMode(enable){
+ const id=enable?'enablePaper':'disablePaper',btn=$(id);
+ btn.disabled=true;
+ $('paperModeFeedback').textContent='Checking server eligibility…';
+ try{
+  const res=await fetch('/control/paper/'+(enable?'enable':'disable'),{method:'POST',credentials:'same-origin',
+    headers:{'X-Scalper-CSRF':'1',...(fallbackAdminToken?{'X-Admin-Token':fallbackAdminToken}:{})}});
+  const data=await res.json();
+  if(!res.ok){
+   const d=data.detail||{};
+   const reasons=Array.isArray(d.reasons)?d.reasons.join(' · '):(typeof d==='string'?d:'HTTP '+res.status);
+   throw Error(reasons);
+  }
+  $('paperModeFeedback').textContent=enable?'Paper trading enabled (simulation only)':'Research Only enabled';
+  busy=false;await refresh();
+ }catch(e){$('paperModeFeedback').textContent='Activation blocked: '+e.message;}
+ finally{btn.disabled=false;}
+}
+$('enablePaper').onclick=()=>changePaperMode(true);
+$('disablePaper').onclick=()=>changePaperMode(false);
 $('pauseBot').onclick=()=>control('pause');
 $('runBot').onclick=()=>control('run');
 $('stopBot').onclick=()=>{if(confirm('Stop all bot workers? This stops market monitoring, AI, news and radar. Only allowed when no positions are open.'))control('stop')};
