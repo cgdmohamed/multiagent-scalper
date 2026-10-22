@@ -9,9 +9,50 @@ header{display:flex;align-items:center;justify-content:space-between;gap:18px;fl
 .stats{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:11px;margin:18px 0 22px}.tile,.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px}.tile{padding:15px;min-width:0}.tilehead{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}.icon{width:18px;height:18px;flex-shrink:0}.tile .number{font-weight:750;font-size:23px;letter-spacing:-.5px;margin-top:13px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.good{color:var(--green)}.bad{color:var(--red)}.muted{color:var(--muted)}.grid{display:grid;grid-template-columns:1.12fr .88fr;gap:16px}.panel{padding:19px;min-width:0}.panelbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:15px}.panelbar .muted{font-size:12px}.wide{grid-column:1/-1}.scroll{max-height:465px;overflow:auto}table{width:100%;border-collapse:collapse;font-size:12px}th{text-align:left;color:var(--muted);font-size:11px;font-weight:600;position:sticky;top:0;background:var(--panel);z-index:1}td,th{padding:13px 10px;border-bottom:1px solid #292f38;vertical-align:middle}td{font-variant-numeric:tabular-nums}td:first-child,th:first-child{padding-left:0}.symbol{font-weight:700;color:var(--text)}.direction{font-weight:700}.soft{font-size:11px;color:var(--muted)}.decisions{display:grid;gap:9px}.decision{background:#12171d;border:1px solid var(--line);border-radius:10px;padding:13px 15px}.decision-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.decision-body{color:#c4cbd3;font-size:13px;line-height:1.65;margin-top:9px}.decision-title{font-weight:700;color:var(--text)}.decision-meta{display:flex;gap:7px;flex-wrap:wrap;align-items:center}details{margin-top:9px}summary{color:var(--gold);font-size:11px;cursor:pointer}pre{white-space:pre-wrap;word-break:break-word;color:#aeb8c4;background:#0c1015;padding:10px;border-radius:7px;font-size:11px}.ai-review{padding:12px 0;border-bottom:1px solid var(--line)}.agent-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:11px}.agent{border:1px solid var(--line);border-radius:8px;background:#11171e;padding:10px;min-width:0}.agentname{font-size:11px;color:var(--muted);margin-bottom:6px}.agentreason{font-size:11px;line-height:1.5;color:#c0c8d1;margin-top:8px;overflow-wrap:anywhere}.empty{padding:24px 10px;color:var(--muted);text-align:center;font-size:12px}.toolbar{display:flex;align-items:center;gap:7px}.toolbar button{padding:7px 10px;font-size:12px}.price{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.section-foot{margin-top:10px;font-size:11px;color:var(--muted)}.news-item{padding:11px 0;border-bottom:1px solid var(--line)}.news-title{font-size:12px;line-height:1.5}.news-meta{display:flex;gap:8px;margin-top:6px;font-size:11px;color:var(--muted)}
 @media(max-width:1250px){.stats{grid-template-columns:repeat(4,minmax(0,1fr))}.agent-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:850px){.grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.agent-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.app{padding:16px}.panel{padding:15px}}@media(max-width:480px){.stats{gap:8px}.tile{padding:12px}.tile .number{font-size:19px}header h1{font-size:18px}.auth input{min-width:150px;max-width:200px}}
- .tabs{display:flex;gap:8px;overflow-x:auto;padding:6px 0 13px;margin-bottom:8px;scrollbar-width:thin}.tabs button{white-space:nowrap;flex-shrink:0}.tabpanel{display:none}.tabpanel.visible{display:grid}.historyfilters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0}.historyfilters input,.historyfilters select{min-width:0;padding:9px;background:#101419;color:var(--text);border:1px solid var(--line);border-radius:8px}.historyfilters select{cursor:pointer}.historical{border-bottom:1px solid var(--line);padding:12px 0}.historical .soft{margin-top:5px}.tabpanel .decisions{max-height:420px}.tabpanel .scroll{max-height:400px}@media(max-width:850px){.tabs button{font-size:12px;padding:9px 10px}} </style></head>
+ .tabs{display:flex;gap:8px;overflow-x:auto;padding:6px 0 13px;margin-bottom:8px;scrollbar-width:thin}.tabs button{white-space:nowrap;flex-shrink:0}.tabpanel{display:none}.tabpanel.visible{display:grid}.historyfilters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0}.historyfilters input,.historyfilters select{min-width:0;padding:9px;background:#101419;color:var(--text);border:1px solid var(--line);border-radius:8px}.historyfilters select{cursor:pointer}.historical{border-bottom:1px solid var(--line);padding:12px 0}.historical .soft{margin-top:5px}.tabpanel .decisions{max-height:420px}.tabpanel .scroll{max-height:400px}@media(max-width:850px){.tabs button{font-size:12px;padding:9px 10px}}
+/* Responsive audit: keep data tables scrollable rather than squeezing columns */
+html,body{max-width:100%;overflow-x:hidden}
+.app,main,.tabpanel,.panel{min-width:0}
+.stats{grid-template-columns:repeat(4,minmax(0,1fr))}
+.auth{align-items:center;justify-content:flex-end}
+.auth button{min-height:42px}
+.auth #stopBot{background:#4b1e28;color:#ffdce2;border-color:#9c3548}
+.auth #startBot{background:#153e31;color:#baf7d9;border-color:#276c50}
+.panel .scroll{overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+.panel .scroll table{min-width:640px}
+.news-meta{flex-wrap:wrap}
+.historyfilters>*{max-width:100%}
+@media(max-width:900px){
+ .app{padding:16px 14px 36px}
+ header{align-items:flex-start}
+ .brand{min-width:0}
+ .sub{overflow-wrap:anywhere}
+ .auth{width:100%;justify-content:flex-start}
+ .stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+ .grid{grid-template-columns:minmax(0,1fr)}
+ .tabpanel.visible{grid-template-columns:minmax(0,1fr)}
+ .agent-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:580px){
+ .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .auth{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .auth input{width:100%;min-width:0;max-width:none;grid-column:1/-1}
+ .auth button{width:100%;padding:10px 8px;font-size:12px}
+ .auth #logout{order:10}
+ .tile{padding:12px}
+ .tile .number{font-size:18px}
+ .tilehead{font-size:11px}
+ .panel{padding:12px}
+ .panelbar{align-items:flex-start}
+ .panelbar h2{font-size:14px}
+ .tabs{margin-left:-2px;margin-right:-2px}
+ .historyfilters input,.historyfilters select{width:100%;flex:1 1 140px}
+ .agent-grid{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:355px){.stats{grid-template-columns:1fr 1fr}.tile .number{font-size:16px}.brand-icon{width:36px;height:36px}.sub{font-size:10px}}
+ </style></head>
 <body><div class="app">
-<header><div class="brand"><span class="brand-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 17 6-6 4 4 8-9"/><path d="M15 6h6v6"/></svg></span><div><h1>Scalper <span style="color:var(--gold)">Terminal</span></h1><div class="sub">BYBIT LINEAR FUTURES · 1× PAPER RESEARCH · NO LIVE ORDERS</div></div></div><div class="auth"><input type="password" id="token" autocomplete="off" placeholder="Admin token" aria-label="Admin token"><button class="primary" id="connect">Connect</button><button id="logout" style="display:none">Log out</button><button id="pauseBot" style="display:none">Pause</button><button id="runBot" style="display:none">Run</button></div></header>
+<header><div class="brand"><span class="brand-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 17 6-6 4 4 8-9"/><path d="M15 6h6v6"/></svg></span><div><h1>Scalper <span style="color:var(--gold)">Terminal</span></h1><div class="sub">BYBIT LINEAR FUTURES · 1× PAPER RESEARCH · NO LIVE ORDERS</div></div></div><div class="auth"><input type="password" id="token" autocomplete="off" placeholder="Admin token" aria-label="Admin token"><button class="primary" id="connect">Connect</button><button id="logout" style="display:none">Log out</button><button id="pauseBot" style="display:none">Pause</button><button id="runBot" style="display:none">Run</button><button id="stopBot" style="display:none">Stop Bot</button><button id="startBot" style="display:none">Start Bot</button></div></header>
 <div class="statusline"><div id="liveStatus"><span class="dot"></span>Awaiting connection</div><div class="notice" id="notice">Enter admin token to view private research data</div></div>
 <section class="stats">
 <div class="tile"><div class="tilehead"><span>◈</span> Equity</div><div class="number" id="equity">—</div></div>
@@ -149,12 +190,14 @@ async function refresh(){
  $('feed').textContent=s.feed_connected?'Online':'Offline';$('feed').className='number '+(s.feed_connected?'good':'bad');
  $('ai').textContent=a.enabled?'Shadow':'Off';$('ai').className='number '+(a.enabled?'good':'muted');
  $('leverage').textContent=(s.leverage??1)+'×';
- $('pauseBot').disabled=!!s.operator_paused;
- $('runBot').disabled=!s.operator_paused;
- $('entryProtection').textContent=s.operator_paused?'PAUSED':s.halted?'HALTED':'ACTIVE';
+ $('stopBot').style.display=s.bot_stopped?'none':'inline-block';
+ $('startBot').style.display=s.bot_stopped?'inline-block':'none';
+ $('pauseBot').disabled=!!s.operator_paused||!!s.bot_stopped;
+ $('runBot').disabled=!s.operator_paused||!!s.bot_stopped;
+ $('entryProtection').textContent=s.bot_stopped?'STOPPED':s.operator_paused?'PAUSED':s.halted?'HALTED':'ACTIVE';
  $('entryProtection').textContent=s.halted?'HALTED':'ACTIVE';$('entryProtection').className='number '+(s.halted?'bad':'good');
  const protectionLabels={LEGACY_HISTORY_REQUIRES_RECONCILIATION:'Legacy trade history has no trusted wallet checkpoint. Manual reconciliation required.',CHECKPOINT_INVALID:'Saved wallet checkpoint cannot be validated.',RISK_LIMIT_OR_RESTORED_HALT:'Risk limit reached or halt restored from a previous session. Review account audit.',NONE:'New entries permitted only when all strategy and risk gates pass.'};
- $('entryProtectionReason').textContent=s.operator_paused?'Operator paused new entries. Existing positions continue to be managed.':protectionLabels[s.halt_diagnostic]||s.halt_diagnostic||'—';
+ $('entryProtectionReason').textContent=s.bot_stopped?'All background workers stopped; dashboard remains available.':s.operator_paused?'Operator paused new entries. Existing positions continue to be managed.':protectionLabels[s.halt_diagnostic]||s.halt_diagnostic||'—';
  $('open').innerHTML=Object.values(s.positions||{}).length?Object.values(s.positions).map(p=>{const m=s.position_analytics?.[p.symbol]||{};return row('<span class="symbol">'+escapeHTML(p.symbol)+'</span>',badge(p.direction,p.direction.toLowerCase()),escapeHTML(p.qty),'<span class="price">'+precise(p.entry)+'</span>','<span class="price">'+precise(m.estimated_exit_price)+'</span>','<span class="'+cls(m.unrealized_pnl||0)+'">'+signed(m.unrealized_pnl)+'</span>','<span class="price">'+precise(p.stop)+' / '+precise(p.target)+'</span>')}).join(''):row('<span class="muted">No open positions</span>','','','','','','');
  $('pairs').innerHTML=(s.ranked_pairs||[]).map(p=>row('<span class="symbol">'+escapeHTML(p.symbol)+'</span>',num(p.score),num(p.spread_bps),money(p.turnover24h))).join('');
  renderDecisions(d);
@@ -183,7 +226,7 @@ function loggedIn(ok){
  token=ok?'session':'';
  $('token').style.display=ok?'none':'';
  $('connect').style.display=ok?'none':'';
- for(const id of ['logout','pauseBot','runBot'])$(id).style.display=ok?'inline-block':'none';
+ for(const id of ['logout','pauseBot','runBot','stopBot','startBot'])$(id).style.display=ok?'inline-block':'none';
 }
 async function control(action){
  if(!token)return;
@@ -195,6 +238,8 @@ async function control(action){
 }
 $('pauseBot').onclick=()=>control('pause');
 $('runBot').onclick=()=>control('run');
+$('stopBot').onclick=()=>{if(confirm('Stop all bot workers? This stops market monitoring, AI, news and radar. Only allowed when no positions are open.'))control('stop')};
+$('startBot').onclick=()=>control('start');
 $('logout').onclick=async()=>{try{await fetch('/auth/logout',{method:'POST',credentials:'same-origin'})}finally{loggedIn(false);$('liveStatus').textContent='Signed out';$('notice').textContent='Enter admin token to reconnect';}};
 $('connect').onclick=async()=>{
  const value=$('token').value;
