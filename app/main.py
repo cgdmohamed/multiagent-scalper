@@ -18,6 +18,7 @@ from .discovery import fetch_candidates
 from .core import Book, SYMBOLS
 from .futures import FuturesPaperEngine, FuturesPosition
 from .performance import report as performance_report
+from .radar import OpportunityRadar
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -26,6 +27,7 @@ news = NewsMonitor(interval=int(os.getenv("NEWS_POLL_SECONDS", "180")))
 shadow = ShadowAgents(max_reviews=int(os.getenv("AI_MAX_REVIEWS_PER_RUN", "20")), news_monitor=news)
 shadow_reviews = []
 shadow_tasks = set()
+radar = OpportunityRadar()
 
 def record_shadow(review):
     shadow_reviews.insert(0,review)
@@ -216,19 +218,55 @@ async def market_stream():
         await asyncio.sleep(5)
 
 
+async def radar_stream():
+    """Independent bounded public-trade feed across up to 20 liquid markets."""
+    while True:
+        try:
+            async with httpx.AsyncClient() as client:
+                candidates=await fetch_candidates(client,top_n=20)
+            symbols=[c.symbol for c in candidates]
+            if not symbols:raise RuntimeError("No radar instruments")
+            async with websockets.connect("wss://stream.bybit.com/v5/public/linear",
+                                          ping_interval=20,ping_timeout=15,max_size=2**22) as ws:
+                topics=[f"publicTrade.{symbol}" for symbol in symbols]
+                for i in range(0,len(topics),10):
+                    await ws.send(json.dumps({"op":"subscribe","args":topics[i:i+10]}))
+                until=time.monotonic()+300
+                while time.monotonic()<until:
+                    try:message=json.loads(await asyncio.wait_for(ws.recv(),timeout=2))
+                    except asyncio.TimeoutError:continue
+                    if message.get("op")=="subscribe":
+                        if message.get("success") is False:raise RuntimeError("Radar subscription rejected")
+                        continue
+                    if not message.get("topic","").startswith("publicTrade."):continue
+                    symbol=message["topic"].split(".",1)[1]
+                    rows=message.get("data",[])
+                    radar.ingest(symbol,rows)
+                    if rows:
+                        try:radar.mark(symbol,float(rows[-1]["p"]))
+                        except (ValueError,KeyError,TypeError):pass
+        except asyncio.CancelledError:raise
+        except Exception as exc:logger.warning("Radar reconnecting: %s",str(exc)[:150])
+        await asyncio.sleep(5)
+
+
 @asynccontextmanager
 async def lifespan(app):
     restore_portfolio()
     task=asyncio.create_task(market_stream())
     news_task=asyncio.create_task(news.loop())
+    radar_task=asyncio.create_task(radar_stream())
     try: yield
     finally:
         task.cancel()
         news_task.cancel()
+        radar_task.cancel()
         for review_task in list(shadow_tasks): review_task.cancel()
         try: await task
         except asyncio.CancelledError: pass
         try: await news_task
+        except asyncio.CancelledError: pass
+        try: await radar_task
         except asyncio.CancelledError: pass
 
 app=FastAPI(title="Bybit Multi-Agent Scalping Research MVP", lifespan=lifespan)
@@ -283,6 +321,11 @@ def ai_status(x_admin_token: str | None=Header(default=None)):
             "recent_reviews":shadow_reviews[:30],"orders_controlled_by_ai":False,
             "chief_model":shadow.chief_model if shadow.enabled else None,
             "agent_errors":shadow.agent_errors,"agent_successes":shadow.agent_successes,"blocked_roles":shadow.blocked_roles}
+
+@app.get("/radar/status")
+def radar_status(x_admin_token: str | None=Header(default=None)):
+    secure(x_admin_token)
+    return radar.status()
 
 @app.get("/news/status")
 def news_status(x_admin_token: str | None=Header(default=None)):
