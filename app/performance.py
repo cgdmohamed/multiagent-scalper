@@ -15,3 +15,38 @@ def report(trades):
         groups['by_direction'][trade.get('direction', 'UNKNOWN')].append(trade)
         groups['by_exit_reason'][trade.get('reason', 'UNKNOWN')].append(trade)
     return {'mode': 'PAPER_ONLY', 'note': 'Closed trades only; fee/slippage estimates, no funding/liquidation.', 'overall': summary(closed), **{group: {key: summary(items) for key, items in sorted(rows.items())} for group, rows in groups.items()}}
+
+def cooldown_study(trades, minutes=(3, 5)):
+    """Retrospective proximity analysis, NOT simulated counterfactual profit."""
+    from datetime import datetime
+    ordered=sorted((t for t in trades if t.get("event") in ("OPEN","CLOSE") and t.get("timestamp")),key=lambda t:t["timestamp"])
+    stops={}
+    results={}
+    for minutes_value in minutes:
+        affected=[]
+        for trade in ordered:
+            symbol=trade.get("symbol")
+            try: ts=datetime.fromisoformat(trade["timestamp"].replace("Z","+00:00")).timestamp()
+            except ValueError:continue
+            if trade["event"]=="OPEN" and symbol in stops:
+                elapsed=(ts-stops[symbol])/60
+                if 0<=elapsed<minutes_value:
+                    affected.append({"symbol":symbol,"timestamp":trade["timestamp"],"minutes_since_stop":round(elapsed,2)})
+            if trade["event"]=="CLOSE" and trade.get("reason")=="STOP":
+                stops[symbol]=ts
+        results[str(minutes_value)+"m"]={"entries_within_cooldown":len(affected),"sample":affected[:20]}
+        stops.clear()
+    return {"mode":"OBSERVATIONAL_ONLY","note":"Counts historical entries within N minutes after same-symbol STOP. Cannot infer avoided losses/profits without full market replay.", "windows":results}
+
+
+def account_audit(trades, cash, open_positions, starting_cash=1000):
+    """Reconcile a *single known account lineage*; never merge unrelated restarts."""
+    opened=sum(1 for t in trades if t.get("event")=="OPEN")
+    closed=[t for t in trades if t.get("event")=="CLOSE"]
+    net=sum(float(t.get("pnl",0)) for t in closed)
+    return {"ledger_open_events":opened,"ledger_close_events":len(closed),
+            "all_time_closed_pnl":round(net,6),
+            "theoretical_flat_equity":round(starting_cash+net,6),
+            "theoretical_equity_is_authoritative":False,
+            "current_cash":round(cash,6),"current_open_positions":len(open_positions),
+            "note":"Theoretical flat equity assumes one uninterrupted portfolio lineage, complete trades and zero deposits; historical restarts may invalidate it."}
