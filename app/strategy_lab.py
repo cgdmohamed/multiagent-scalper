@@ -83,12 +83,24 @@ class StrategyLab:
             changed.append(item)
             self.pending.append(item)
         return changed
+    def expire_pending(self,now_ms=None):
+        """Mark old missing-quote measurements unavailable, never as losses."""
+        now_ms=now_ms or int(time.time()*1000)
+        changed=[]
+        for item in list(self.pending):
+            if now_ms-item["at_ms"]>=20*60*1000 and "15m" not in item["returns"]:
+                item["measurement_status"]="EXPIRED_NO_FRESH_QUOTE"
+                self.pending.remove(item)
+                changed.append(item)
+        return changed
+
     def report(self):
         stats={}
         for name in ("TREND_SCALP","MOMENTUM_BREAKOUT","ORDERBOOK_PRESSURE_PROXY","EXECUTED_CVD_CONFIRM","VWAP_PULLBACK","TREND_ADX_FILTER","TREND_MACD_RSI_FILTER","TREND_ALL_CONFIRMATIONS"):
             rows=[r for r in self.samples if r["strategy"]==name]
             measured=[r["returns"]["15m"] for r in rows if "15m" in r["returns"]]
-            stats[name]={"signals":len(rows),"observed_15m":len(measured),
+            expired=sum(r.get("measurement_status")=="EXPIRED_NO_FRESH_QUOTE" for r in rows)
+            stats[name]={"signals":len(rows),"observed_15m":len(measured),"expired_no_quote":expired,
                          "avg_15m_net_bps":round(sum(measured)/len(measured),2) if measured else None,
                          "positive_15m_pct":round(100*sum(x>0 for x in measured)/len(measured),2) if measured else None}
         return {"market_regimes":self.regimes,"mode":"RESEARCH_ONLY","execution":"NONE","indicator_requirements":"30 public trades, 25k USDT executed /2m, <=3bps spread, 14 closed 1m ATR bars, 8-180bps ATR for new strategies","price_basis":"mid_quote","note":"Indicative fixed-horizon net returns, not realized fills or stop/target simulations. Orderbook pressure is not executed trade flow. Samples are checkpointed in SQLite when configured.", "strategies":stats,
