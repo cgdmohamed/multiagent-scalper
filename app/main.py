@@ -16,7 +16,8 @@ import websockets
 import httpx
 from .discovery import fetch_candidates
 from .core import Book, SYMBOLS
-from .futures import FuturesPaperEngine
+from .futures import FuturesPaperEngine, FuturesPosition
+from .performance import report as performance_report
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -40,6 +41,58 @@ def persist(kind, payload):
     with sqlite3.connect(DB_PATH) as db:
         db.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, logged_at TEXT DEFAULT CURRENT_TIMESTAMP, payload TEXT)")
         db.execute("INSERT INTO events (kind,payload) VALUES (?,?)",(kind,json.dumps(payload)))
+
+
+def save_trade_batch(trades):
+    """Atomic trade ledger + portfolio state checkpoint in the same SQLite transaction."""
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    state = {
+        "cash": engine.cash, "positions": {k:asdict(v) for k,v in engine.positions.items()},
+        "peak_equity": engine.peak_equity, "day": engine.day,
+        "day_start_equity": engine.day_start_equity, "halted": engine.halted,
+        "order_seen": list(engine.order_manager.seen),
+    }
+    with sqlite3.connect(DB_PATH) as db:
+        db.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, logged_at TEXT DEFAULT CURRENT_TIMESTAMP, payload TEXT)")
+        for trade in trades:
+            db.execute("INSERT INTO events (kind,payload) VALUES (?,?)",("trade",json.dumps(trade)))
+        db.execute("INSERT INTO events (kind,payload) VALUES (?,?)",("engine_state",json.dumps(state)))
+
+
+def restore_portfolio():
+    """Fail closed on uncheckpointed legacy trades; never silently reset a paper portfolio."""
+    if not DB_PATH.exists(): return
+    with sqlite3.connect(DB_PATH) as db:
+        table=db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='events'").fetchone()
+        if not table:return
+        row=db.execute("SELECT payload FROM events WHERE kind='engine_state' ORDER BY id DESC LIMIT 1").fetchone()
+        existing=db.execute("SELECT 1 FROM events WHERE kind='trade' LIMIT 1").fetchone()
+        if row is None:
+            if existing:
+                engine.halted=True
+                engine.last_error="LEGACY_TRADES_WITHOUT_CHECKPOINT: historical events preserved; portfolio halted until reconciliation"
+            return
+        try:
+            data=json.loads(row[0])
+            positions={k:FuturesPosition(**v) for k,v in data["positions"].items()}
+            if not isinstance(data["cash"],(int,float)) or data["cash"]<0:
+                raise ValueError("invalid saved cash")
+            engine.cash=float(data["cash"])
+            engine.positions=positions
+            engine.peak_equity=float(data["peak_equity"])
+            engine.day=data["day"]
+            engine.day_start_equity=float(data["day_start_equity"])
+            engine.halted=bool(data["halted"])
+            engine.order_manager.seen=set(data.get("order_seen",[]))
+            rows=db.execute("SELECT payload FROM events WHERE kind='trade' ORDER BY id DESC LIMIT 500").fetchall()
+            from collections import deque
+            engine.trades=deque((json.loads(t[0]) for t in rows),maxlen=500)
+            # Keep checkpointed positions even if they are not in current discovery.
+            engine.order_manager.allowed_symbols.update(positions)
+            engine.last_error="Restored checkpointed paper portfolio; funding and liquidation still not modeled"
+        except (KeyError,ValueError,TypeError) as exc:
+            engine.halted=True
+            engine.last_error=f"CORRUPT_CHECKPOINT: {type(exc).__name__}; trading halted"
 
 
 async def prime_candles(client, symbols):
@@ -153,7 +206,7 @@ async def market_stream():
                             shadow_tasks.add(task)
                             task.add_done_callback(shadow_tasks.discard)
                     if len(engine.trades)>before:
-                        for trade in list(engine.trades)[:len(engine.trades)-before][::-1]:persist("trade",trade)
+                        save_trade_batch(list(engine.trades)[:len(engine.trades)-before][::-1])
         except asyncio.CancelledError: raise
         except Exception as exc:
             engine.last_error = f"{type(exc).__name__}: {str(exc)[:180]}"
@@ -165,6 +218,7 @@ async def market_stream():
 
 @asynccontextmanager
 async def lifespan(app):
+    restore_portfolio()
     task=asyncio.create_task(market_stream())
     news_task=asyncio.create_task(news.loop())
     try: yield
@@ -202,6 +256,13 @@ def decisions(x_admin_token: str | None=Header(default=None)):
 def trades(x_admin_token: str | None=Header(default=None)):
     secure(x_admin_token)
     return list(engine.trades)
+
+@app.get("/performance")
+def performance(x_admin_token: str | None=Header(default=None)):
+    secure(x_admin_token)
+    with sqlite3.connect(DB_PATH) as db:
+        rows=db.execute("SELECT payload FROM events WHERE kind='trade' ORDER BY id").fetchall() if DB_PATH.exists() else []
+    return performance_report([json.loads(r[0]) for r in rows])
 
 @app.get("/events")
 def events(x_admin_token: str | None=Header(default=None), limit:int=100):
