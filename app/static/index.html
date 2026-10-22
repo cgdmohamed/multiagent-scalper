@@ -124,14 +124,33 @@ input:focus{border-color:#cfa72f;outline:none;box-shadow:0 0 0 3px #f0b90b20}
  .stats{grid-template-columns:repeat(4,minmax(0,1fr))}
  .stats>.tile:last-child{grid-column:span 2}
 }
+
+/* Desktop command center: compact KPI grid + dedicated activity rail */
+.dashboard-top{display:grid;grid-template-columns:minmax(0,1fr) 350px;gap:16px;align-items:stretch;margin-top:14px}
+.dashboard-summary,.dashboard-sidebar{min-width:0}
+.dashboard-summary #botStateBanner{margin-top:0!important}
+.dashboard-summary .statusline{margin:10px 0 12px}
+.dashboard-summary .stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0 0}
+.dashboard-summary .stats>.tile{grid-column:auto!important;min-height:93px;padding:13px 15px}
+.dashboard-summary .stats>.tile .number{font-size:21px;margin-top:8px}
+.dashboard-summary .stats>.tile:nth-child(9){border-color:#625132}
+.dashboard-sidebar #startupPanel{margin-top:0!important;height:100%;display:flex;flex-direction:column;min-height:0}
+.dashboard-sidebar #startupLog{max-height:390px!important;min-height:180px;flex:1;overflow:auto}
+.dashboard-sidebar #startupStage{overflow-wrap:anywhere;text-align:right}
+@media(max-width:1199px){
+ .dashboard-top{grid-template-columns:minmax(0,1fr)}
+ .dashboard-summary .stats{grid-template-columns:repeat(4,minmax(0,1fr))}
+ .dashboard-sidebar #startupLog{min-height:100px;max-height:180px!important}
+}
+@media(max-width:680px){
+ .dashboard-summary .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .dashboard-summary .stats>.tile{min-height:91px;padding:12px}
+ .dashboard-summary .stats>.tile .number{font-size:19px}
+}
 </style></head>
 <body><div class="app">
 <header><div class="brand"><span class="brand-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 17 6-6 4 4 8-9"/><path d="M15 6h6v6"/></svg></span><div><h1>Scalper <span style="color:var(--gold)">Terminal</span></h1><div class="sub">BYBIT LINEAR FUTURES · 1× PAPER RESEARCH · NO LIVE ORDERS</div></div></div><div class="auth"><input type="password" id="token" autocomplete="off" placeholder="Admin token" aria-label="Admin token"><button class="primary" id="connect">Connect</button><button id="logout" style="display:none">Log out</button><button id="pauseBot" style="display:none">Pause</button><button id="runBot" style="display:none">Run</button><button id="enablePaper" style="display:none">Enable Paper Trading</button><button id="disablePaper" style="display:none">Research Only</button><button id="stopBot" style="display:none">Stop Bot</button><button id="startBot" style="display:none">Start Bot</button></div></header>
-<div id="botStateBanner" role="status" style="margin-top:14px;padding:13px;border:1px solid #4e5761;border-radius:10px;font-weight:750">Bot status: waiting for authentication</div><div id="paperModeFeedback" role="status" style="margin:10px 0;color:#aab5c3;font-size:12px"></div><div id="startupPanel" style="margin-top:12px;border:1px solid #2b3139;border-radius:10px;padding:12px 15px">
-  <div style="display:flex;justify-content:space-between;gap:10px"><strong>Research Startup</strong><span id="startupStage" class="soft">Awaiting connection</span></div>
-  <div role="progressbar" id="startupProgress" aria-label="Research startup progress" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0" style="height:7px;background:#30363d;border-radius:8px;overflow:hidden;margin:10px 0"><div id="startupFill" style="height:100%;width:0%;background:#f0b90b;transition:width .25s"></div></div>
-  <div id="startupLog" role="log" aria-live="polite" style="font:12px ui-monospace,monospace;color:#aab5c3;max-height:110px;overflow:auto">Start research to see verified server events.</div>
-</div><div class="statusline"><div id="liveStatus"><span class="dot"></span>Awaiting connection</div><div class="notice" id="notice">Enter admin token to view private research data</div></div>
+<div class="dashboard-top"><div class="dashboard-summary"><div id="botStateBanner" role="status" style="margin-top:14px;padding:13px;border:1px solid #4e5761;border-radius:10px;font-weight:750">Bot status: waiting for authentication</div><div id="paperModeFeedback" role="status" style="margin:10px 0;color:#aab5c3;font-size:12px"></div><div class="statusline"><div id="liveStatus"><span class="dot"></span>Awaiting connection</div><div class="notice" id="notice">Enter admin token to view private research data</div></div>
 <section class="stats">
 <div class="tile"><div class="tilehead"><span>◈</span> Equity</div><div class="number" id="equity">—</div></div>
 <div class="tile"><div class="tilehead"><span>▣</span> Available cash</div><div class="number" id="cash">—</div></div>
@@ -142,7 +161,11 @@ input:focus{border-color:#cfa72f;outline:none;box-shadow:0 0 0 3px #f0b90b20}
 <div class="tile"><div class="tilehead"><span>✧</span> AI review</div><div class="number" id="ai">—</div></div>
 <div class="tile"><div class="tilehead"><span>⚖</span> Leverage</div><div class="number" id="leverage">1×</div></div>
 <div class="tile"><div class="tilehead"><span>⛨</span> Entry protection</div><div class="number" id="entryProtection">—</div><div class="soft" id="entryProtectionReason"></div></div>
-</section>
+</section></div><aside class="dashboard-sidebar" aria-label="Research activity"><div id="startupPanel" style="margin-top:12px;border:1px solid #2b3139;border-radius:10px;padding:12px 15px">
+  <div style="display:flex;justify-content:space-between;gap:10px"><strong>Research Startup</strong><span id="startupStage" class="soft">Awaiting connection</span></div>
+  <div role="progressbar" id="startupProgress" aria-label="Research startup progress" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0" style="height:7px;background:#30363d;border-radius:8px;overflow:hidden;margin:10px 0"><div id="startupFill" style="height:100%;width:0%;background:#f0b90b;transition:width .25s"></div></div>
+  <div id="startupLog" role="log" aria-live="polite" style="font:12px ui-monospace,monospace;color:#aab5c3;max-height:110px;overflow:auto">Start research to see verified server events.</div>
+</div></aside></div>
 <nav class="tabs" aria-label="Dashboard sections"><button class="active" data-tab="overview">◈ Overview</button><button data-tab="radar">⚡ Opportunity Radar</button><button data-tab="lab">Strategy Lab</button><button data-tab="performance">▥ Performance</button><button data-tab="intelligence">✧ AI & News</button><button data-tab="history">◷ History</button></nav><main><div class="grid tabpanel visible" data-panel="overview">
 <section class="panel wide"><div class="panelbar"><h2><span style="color:var(--gold)">◈</span> Open positions</h2><span class="muted">Unrealized P&amp;L estimates include exit slippage and fees</span></div><div class="scroll"><table><thead><tr><th>Instrument</th><th>Side</th><th>Quantity</th><th>Entry</th><th>Exit mark</th><th>Unrealized P&amp;L</th><th>Stop / Target</th><th>Trade progress</th></tr></thead><tbody id="open"></tbody></table></div></section>
 <section class="panel wide"><div class="panelbar"><h2><span style="color:var(--blue)">◉</span> Latest decisions</h2><div class="toolbar"><button id="simple" class="active">Simple</button><button id="technical">Technical</button></div></div><div class="scroll decisions" id="decisions"></div><div class="section-foot">The stated “edge” is a heuristic, not a validated profit forecast.</div></section>
