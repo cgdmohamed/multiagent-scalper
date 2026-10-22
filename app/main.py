@@ -366,7 +366,7 @@ async def historical_research_worker():
         for symbol in ("BTCUSDT","ETHUSDT","SOLUSDT"):
             if BOT_STOPPED: return
             try:
-                await download_history(DB_PATH,symbol,"1",3)
+                await download_history(DB_PATH,symbol,"1",4)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
