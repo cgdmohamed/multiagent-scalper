@@ -12,7 +12,7 @@ def evaluate(bars,technical):
         return {},{"state":"GAPPED_CANDLES"}
     closes=[b[3] for b in bars]
     previous,current=bars[-2],bars[-1]
-    ts,high,low,close=current
+    ts,high,low,close=current[:4]
     prev_close=previous[3]
     ema9=_ema(closes,9);ema21=_ema(closes,21)
     atr_bps=sum(b[1]-b[2] for b in bars[-14:])/14/close*10000
