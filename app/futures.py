@@ -6,6 +6,7 @@ import math
 import uuid
 from .core import PaperEngine, Settings, AgentOpinion, Decision, utcnow
 from .orders import OrderIntent, RoutingError
+from .position_sizing import size_position
 
 @dataclass
 class FuturesPosition:
@@ -90,14 +91,23 @@ class FuturesPaperEngine(PaperEngine):
         stop=entry*(1-self.cfg.stop_bps/10000 if direction=="LONG" else 1+self.cfg.stop_bps/10000)
         target=entry*(1+self.cfg.target_bps/10000 if direction=="LONG" else 1-self.cfg.target_bps/10000)
         eq=self.equity()
-        per_unit=abs(entry-stop)+(entry+stop)*(self.cfg.taker_fee_bps+self.cfg.slippage_bps_per_side)/10000
         used=sum(p.margin for p in self.positions.values())
-        maximum=min(eq*self.cfg.risk_per_trade/per_unit,eq*self.cfg.max_allocation_fraction/entry,
-                    max(0,eq*self.cfg.max_total_allocation_fraction-used)/entry,
-                    self.cash/(entry*(1+self.cfg.taker_fee_bps/10000)))
-        step=self.candidate_rules[book.symbol].qty_step
-        qty=math.floor((maximum+1e-12)/step)*step
-        margin=qty*entry;fee=margin*self.cfg.taker_fee_bps/10000
+        rules=self.candidate_rules[book.symbol]
+        # Cap paper notional by a small fraction of visible bid/ask depth.
+        side_depth=(book.ask_depth if direction=="LONG" else book.bid_depth)*entry
+        sizing=size_position(equity=eq,cash=self.cash,entry=entry,stop=stop,
+                             qty_step=rules.qty_step,
+                             min_notional=max(self.cfg.min_notional,rules.min_notional),
+                             risk_fraction=self.cfg.risk_per_trade,
+                             fee_bps=self.cfg.taker_fee_bps,
+                             slippage_bps=self.cfg.slippage_bps_per_side,
+                             allocation_fraction=self.cfg.max_allocation_fraction,
+                             total_free_notional=max(0,eq*self.cfg.max_total_allocation_fraction-used),
+                             available_depth_notional=side_depth)
+        if not sizing["allowed"]:raise RoutingError(sizing["reason"])
+        qty=sizing["qty"]
+        margin=qty*entry
+        fee=margin*self.cfg.taker_fee_bps/10000
         if margin<max(self.cfg.min_notional,self.candidate_rules[book.symbol].min_notional) or margin+fee>self.cash:
             raise RoutingError("INSUFFICIENT_NOTIONAL_OR_CASH")
         self.order_manager.submit(OrderIntent(decision_id,book.symbol,"BUY" if direction=="LONG" else "SELL",qty,entry,f"{book.symbol}:{book.update_id}"))
