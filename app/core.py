@@ -133,6 +133,9 @@ class PaperEngine:
         failures = []
         if self.halted: failures.append("CIRCUIT_BREAKER")
         if self.research_only: failures.append("RESEARCH_ONLY_NO_ENTRIES")
+        from .capital_guardian import inspect
+        for reason in inspect(self)["reasons"]:
+            if reason not in failures:failures.append(reason)
         if self.operator_paused: failures.append("OPERATOR_PAUSED")
         if not (book.bid > 0 and book.ask > book.bid): failures.append("INVALID_BOOK")
         if now_ms - book.received_ms > self.cfg.max_book_age_ms or book.received_ms > now_ms+1000: failures.append("STALE_BOOK")
