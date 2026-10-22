@@ -44,3 +44,20 @@ def test_long_profit_is_positive_on_price_rise():
     exit_book=Book("BTCUSDT",p.entry*1.03,p.entry*1.0301,100,100,601000,601000,11)
     e._exit(exit_book,601000)
     assert e.trades[0]["pnl"]>0
+
+def test_futures_does_not_require_obsolete_tick_warmup():
+    e=setup_engine("SHORT")
+    e.history["BTCUSDT"].clear()
+    d=e.evaluate(book("SHORT"),600000)
+    assert d is not None
+    assert "INSUFFICIENT_HISTORY" not in d.reasons
+    assert d.market["direction"]=="SHORT"
+
+def test_conflicting_timeframes_reported_explicitly():
+    e=setup_engine("LONG")
+    e.candles["BTCUSDT"]["3"].clear()
+    for i in range(3):
+        e.on_candle("BTCUSDT","3",i*180000,100-i)
+    d=e.evaluate(book("LONG"),600000)
+    assert "TREND_TIMEFRAMES_CONFLICT" in d.reasons
+    assert d.market["direction"] is None
