@@ -69,6 +69,14 @@ class StrategyLab:
                 signals["TREND_MACD_RSI_FILTER"]=direction
             if technical["adx14"]>=25 and aligned and momentum and healthy_rsi and recent_cvd is not None and m1*recent_cvd>0 and liquid:
                 signals["TREND_ALL_CONFIRMATIONS"]=direction
+        # Hypotheses are generated only on newly closed bars (never on each book tick).
+        context=indicators.get("research_context") or {}
+        bar_at=context.get("bar_at_ms")
+        if bar_at is not None:
+            for name,direction in (indicators.get("research_hypotheses") or {}).items():
+                if self.last_signal.get((sym,name,"bar"))!=bar_at:
+                    signals[name]=direction
+                    self.last_signal[(sym,name,"bar")]=bar_at
         for strategy,direction in signals.items():
             key=(sym,strategy)
             if now-self.last_signal.get(key,-10**15)<15*60*1000:continue
@@ -96,7 +104,7 @@ class StrategyLab:
 
     def report(self):
         stats={}
-        for name in ("TREND_SCALP","MOMENTUM_BREAKOUT","ORDERBOOK_PRESSURE_PROXY","EXECUTED_CVD_CONFIRM","VWAP_PULLBACK","TREND_ADX_FILTER","TREND_MACD_RSI_FILTER","TREND_ALL_CONFIRMATIONS"):
+        for name in ("TREND_SCALP","MOMENTUM_BREAKOUT","ORDERBOOK_PRESSURE_PROXY","EXECUTED_CVD_CONFIRM","VWAP_PULLBACK","TREND_ADX_FILTER","TREND_MACD_RSI_FILTER","TREND_ALL_CONFIRMATIONS","EMA_PULLBACK_9_21","SESSION_VWAP_PULLBACK","VOLUME_RANGE_BREAKOUT","RSI_RANGE_REVERSAL"):
             rows=[r for r in self.samples if r["strategy"]==name]
             measured=[r["returns"]["15m"] for r in rows if "15m" in r["returns"]]
             expired=sum(r.get("measurement_status")=="EXPIRED_NO_FRESH_QUOTE" for r in rows)
