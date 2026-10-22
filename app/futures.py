@@ -54,7 +54,8 @@ class FuturesPaperEngine(PaperEngine):
         if now_ms-self.last_eval.get(book.symbol,0)<self.cfg.min_interval_ms:return None
         self.last_eval[book.symbol]=now_ms
         votes,momentum=self.agents(book)
-        # Legacy six-tick warm-up is irrelevant once closed candles are available.\n        reasons=[r for r in self.gates(book,now_ms) if r != "INSUFFICIENT_HISTORY"]
+        # Closed candles replace the obsolete six-tick entry warm-up.
+        reasons=[r for r in self.gates(book,now_ms) if r != "INSUFFICIENT_HISTORY"]
         m1,m3=self.candle_momentum(book.symbol)
         direction="LONG" if votes[0].action=="BUY" else "SHORT" if votes[0].action=="SELL" else None
         if m1 is None:reasons.append("CANDLE_HISTORY_NOT_READY")
