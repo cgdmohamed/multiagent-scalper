@@ -44,6 +44,9 @@ DB_PATH = Path(os.getenv("DB_PATH", "/data/events.sqlite3"))
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 SESSION_LIFETIME = 7*24*3600
 MANUALLY_PAUSED = False
+BOT_STOPPED = False
+BOT_TASKS = {}
+BOT_LOCK = asyncio.Lock()
 
 
 def auth_cookie_value():
@@ -74,12 +77,14 @@ def save_operator_pause(paused):
 
 
 def restore_operator_pause():
-    global MANUALLY_PAUSED
+    global MANUALLY_PAUSED, BOT_STOPPED
     if not DB_PATH.exists():return
     with sqlite3.connect(DB_PATH) as db:
         if db.execute("SELECT 1 FROM sqlite_master WHERE name='operator_settings' AND type='table'").fetchone():
             row=db.execute("SELECT value FROM operator_settings WHERE name='paused'").fetchone()
             MANUALLY_PAUSED=bool(row and row[0]=="1")
+            stopped=db.execute("SELECT value FROM operator_settings WHERE name='stopped'").fetchone()
+            BOT_STOPPED=bool(stopped and stopped[0]=="1")
     engine.operator_paused=MANUALLY_PAUSED
 
 
@@ -303,25 +308,37 @@ async def radar_stream():
         await asyncio.sleep(5)
 
 
+def persist_bot_stopped(stopped):
+    DB_PATH.parent.mkdir(parents=True,exist_ok=True)
+    with sqlite3.connect(DB_PATH) as db:
+        db.execute("CREATE TABLE IF NOT EXISTS operator_settings (name TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        db.execute("INSERT INTO operator_settings(name,value) VALUES ('stopped',?) ON CONFLICT(name) DO UPDATE SET value=excluded.value",("1" if stopped else "0",))
+
+
+def launch_bot_tasks():
+    if BOT_STOPPED:return
+    for name,fn in (("market",market_stream),("news",news.loop),("radar",radar_stream)):
+        if name not in BOT_TASKS or BOT_TASKS[name].done():
+            BOT_TASKS[name]=asyncio.create_task(fn())
+
+
+async def shutdown_bot_tasks():
+    tasks=list(BOT_TASKS.values())+list(shadow_tasks)
+    for task in tasks:task.cancel()
+    if tasks:await asyncio.gather(*tasks,return_exceptions=True)
+    BOT_TASKS.clear()
+    engine.feed_connected=False
+
+
 @asynccontextmanager
 async def lifespan(app):
     restore_portfolio()
     restore_operator_pause()
-    task=asyncio.create_task(market_stream())
-    news_task=asyncio.create_task(news.loop())
-    radar_task=asyncio.create_task(radar_stream())
+    launch_bot_tasks()
     try: yield
     finally:
-        task.cancel()
-        news_task.cancel()
-        radar_task.cancel()
-        for review_task in list(shadow_tasks): review_task.cancel()
-        try: await task
-        except asyncio.CancelledError: pass
-        try: await news_task
-        except asyncio.CancelledError: pass
-        try: await radar_task
-        except asyncio.CancelledError: pass
+        await shutdown_bot_tasks()
+
 
 app=FastAPI(title="Bybit Multi-Agent Scalping Research MVP", lifespan=lifespan)
 
@@ -362,6 +379,34 @@ def browser_logout(response:Response,x_admin_token: str | None=Header(default=No
     return {"authenticated":False}
 
 
+@app.post("/control/stop")
+async def fully_stop_bot(x_admin_token: str | None=Header(default=None)):
+    global BOT_STOPPED
+    secure(x_admin_token)
+    async with BOT_LOCK:
+        if engine.positions:
+            raise HTTPException(409,"Cannot stop all monitoring with open paper positions; use Pause until flat")
+        BOT_STOPPED=True
+        engine.operator_paused=True
+        persist_bot_stopped(True)
+        await shutdown_bot_tasks()
+        persist("operator_control",{"action":"STOP","mode":"PAPER_ONLY"})
+        return {"bot_stopped":True,"running_tasks":0,"dashboard_available":True}
+
+
+@app.post("/control/start")
+async def fully_start_bot(x_admin_token: str | None=Header(default=None)):
+    global BOT_STOPPED
+    secure(x_admin_token)
+    async with BOT_LOCK:
+        BOT_STOPPED=False
+        persist_bot_stopped(False)
+        engine.operator_paused=MANUALLY_PAUSED
+        launch_bot_tasks()
+        persist("operator_control",{"action":"START","mode":"PAPER_ONLY"})
+        return {"bot_stopped":False,"operator_paused":MANUALLY_PAUSED,"risk_halted":engine.halted}
+
+
 @app.post("/control/pause")
 def pause_new_entries(x_admin_token: str | None=Header(default=None)):
     global MANUALLY_PAUSED
@@ -378,7 +423,7 @@ def resume_new_entries(x_admin_token: str | None=Header(default=None)):
     secure(x_admin_token)
     save_operator_pause(False)
     MANUALLY_PAUSED=False
-    engine.operator_paused=False
+    engine.operator_paused=BOT_STOPPED
     return {"operator_paused":False,"risk_halted":engine.halted,"note":"Risk circuit breaker is never overridden"}
 
 
@@ -396,6 +441,8 @@ def status(x_admin_token: str | None=Header(default=None)):
     secure(x_admin_token)
     current=engine.status()
     current["operator_paused"]=MANUALLY_PAUSED
+    current["bot_stopped"]=BOT_STOPPED
+    current["background_tasks"]={name:not task.done() for name,task in BOT_TASKS.items()}
     current["portfolio_recovery"]=PORTFOLIO_RECOVERY
     current["halt_diagnostic"]="LEGACY_HISTORY_REQUIRES_RECONCILIATION" if PORTFOLIO_RECOVERY=="UNRECONCILED_LEGACY_HISTORY" else "CHECKPOINT_INVALID" if PORTFOLIO_RECOVERY=="CHECKPOINT_INVALID" else "RISK_LIMIT_OR_RESTORED_HALT" if engine.halted else "NONE"
     return current
@@ -498,7 +545,7 @@ def events(x_admin_token: str | None=Header(default=None), limit:int=50,
            before_id:int | None=None, kind:str | None=None,
            symbol:str | None=None, date_from:str | None=None, date_to:str | None=None):
     secure(x_admin_token)
-    allowed={"trade","decision","shadow_review","radar_alert","engine_state","paper_session_start"}
+    allowed={"trade","decision","shadow_review","radar_alert","engine_state","paper_session_start","operator_control"}
     if kind and kind not in allowed: raise HTTPException(400,"Invalid event kind")
     if before_id is not None and before_id<1: raise HTTPException(400,"Invalid cursor")
     if symbol and (len(symbol)>32 or not symbol.isalnum()): raise HTTPException(400,"Invalid symbol")
