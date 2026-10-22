@@ -15,11 +15,12 @@ from .news import NewsMonitor
 import websockets
 import httpx
 from .discovery import fetch_candidates
-from .core import PaperEngine, Book, SYMBOLS
+from .core import Book, SYMBOLS
+from .futures import FuturesPaperEngine
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
-engine = PaperEngine()
+engine = FuturesPaperEngine()
 news = NewsMonitor(interval=int(os.getenv("NEWS_POLL_SECONDS", "180")))
 shadow = ShadowAgents(max_reviews=int(os.getenv("AI_MAX_REVIEWS_PER_RUN", "20")), news_monitor=news)
 shadow_reviews = []
@@ -48,7 +49,7 @@ async def prime_candles(client, symbols):
     async def load(symbol, interval):
         resp = await client.get(
             "https://api.bybit.com/v5/market/kline",
-            params={"category":"spot","symbol":symbol,"interval":interval,"limit":20},
+            params={"category":"linear","symbol":symbol,"interval":interval,"limit":20},
             timeout=12.0,
         )
         resp.raise_for_status()
@@ -74,7 +75,7 @@ def subscription_batches(symbols, batch_size=10):
 
 
 async def market_stream():
-    url = "wss://stream.bybit.com/v5/public/spot"
+    url = "wss://stream.bybit.com/v5/public/linear"
     # Refresh candidates between socket sessions. Always retain open positions.
     while True:
         try:
@@ -185,7 +186,7 @@ def secure(x_admin_token: str | None):
         raise HTTPException(403,"Unauthorized")
 
 @app.get("/health")
-def health(): return {"ok":True,"mode":"PAPER_ONLY","feed_connected":engine.feed_connected,"ranked_pairs":len(engine.candidates),"decisions":len(engine.decisions)}
+def health(): return {"ok":True,"mode":"FUTURES_PAPER_ONLY","feed_connected":engine.feed_connected,"ranked_pairs":len(engine.candidates),"decisions":len(engine.decisions)}
 
 @app.get("/status")
 def status(x_admin_token: str | None=Header(default=None)):
