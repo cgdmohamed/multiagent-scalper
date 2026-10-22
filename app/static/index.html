@@ -125,7 +125,7 @@ async function refresh(){
  const now=Date.now(),signature=JSON.stringify([s.equity,s.cash,s.positions,s.position_analytics,s.decisions,s.trades,d[0]?.decision_id,t[0]?.timestamp,a.reviews_started,a.agent_successes,a.agent_errors,n.last_update]);
  if(signature!==lastSignature){lastSignature=signature;lastChange=now}lastSuccess=now;connected=true;
  $('liveStatus').innerHTML='<span class="dot live"></span> Live · Synced '+new Date(now).toLocaleTimeString()+' · Data changed '+new Date(lastChange).toLocaleTimeString()+' · Every 2 seconds';
- $('notice').textContent=s.last_error||'Paper mode active. AI does not control executions.';
+ $('notice').textContent=s.halted?('NEW ENTRIES HALTED · '+(s.halt_diagnostic||'RISK_PROTECTION')+' · Paper positions remain monitored.'):s.last_error||'Paper mode active. AI does not control executions.';
  $('equity').textContent=money(s.equity);$('cash').textContent=money(s.cash);$('positions').textContent=Object.keys(s.positions||{}).length;
  const realized=s.realized_pnl??t.filter(x=>x.event==='CLOSE').reduce((sum,x)=>sum+(x.pnl||0),0);
  $('pnl').textContent=signed(realized);$('pnl').className='number '+cls(realized);
