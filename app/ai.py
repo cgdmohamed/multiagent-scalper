@@ -12,7 +12,7 @@ ROLES = {
 
 
 def validate_vote(v):
-    if not isinstance(v,dict) or v.get('action') not in ('BUY','HOLD','VETO','ABSTAIN'):
+    if not isinstance(v,dict) or v.get('action') not in ('BUY','SELL','HOLD','VETO','ABSTAIN'):
         raise ValueError('Invalid action')
     if not isinstance(v.get('reason'),str) or not 1<=len(v['reason'])<=700:
         raise ValueError('Invalid reason')
@@ -35,7 +35,7 @@ class ShadowAgents:
 
     async def _vote(self, client, role, snapshot):
         body={'model':self.chief_model if role == 'chief' else self.model, 'reasoning_effort':'low', 'response_format':{'type':'json_object'},
-              'messages':[{'role':'system','content':f'{ROLES[role]} Return only JSON with action (BUY/HOLD/VETO/ABSTAIN) and reason. No financial guarantees.'},
+              'messages':[{'role':'system','content':f'{ROLES[role]} Return only JSON with action (BUY=LONG/SELL=SHORT/HOLD/VETO/ABSTAIN) and reason. No financial guarantees.'},
                           {'role':'user','content':json.dumps(snapshot,sort_keys=True)}]}
         r=await client.post('https://api.openai.com/v1/chat/completions',json=body,
               headers={'Authorization':f'Bearer {self.key}'},timeout=12)
@@ -49,7 +49,7 @@ class ShadowAgents:
             # Immutable, compact snapshot; model is advisory and its output is not used in execution.
             snapshot={'symbol':decision.symbol,'snapshot_id':decision.snapshot_id,
                       'market':decision.market,'baseline_verdict':decision.verdict,
-                      'baseline_reasons':decision.reasons}
+                      'baseline_reasons':decision.reasons,'proposed_direction':decision.market.get('direction')}
             snapshot['news'] = (self.news_monitor.related(decision.symbol) if self.news_monitor else [])
             snapshot['news_feed_health'] = (self.news_monitor.status()['sources_ok'] if self.news_monitor else 0)
             votes={}
@@ -60,5 +60,5 @@ class ShadowAgents:
                     except Exception as exc: votes[role]={'action':'ABSTAIN','reason':f'API_ERROR:{type(exc).__name__}'}
             callback({'decision_id':decision.decision_id,'symbol':decision.symbol,
                 'baseline_verdict':decision.verdict,'votes':votes,
-                'shadow_verdict':'BUY' if all(v['action']=='BUY' for v in votes.values()) else 'SKIP',
+                'shadow_verdict':('LONG' if all(v['action']=='BUY' for v in votes.values()) else 'SHORT' if all(v['action']=='SELL' for v in votes.values()) else 'SKIP'),
                 'mode':'SHADOW_ONLY'})
