@@ -345,16 +345,28 @@ app=FastAPI(title="Bybit Multi-Agent Scalping Research MVP", lifespan=lifespan)
 
 @app.middleware("http")
 async def browser_session_auth(request: Request, call_next):
-    if cookie_valid(request.cookies.get("scalper_session")):
+    """Cookie auth requires a non-simple CSRF header for mutations.
+
+    Do not compare Origin with the internal reverse-proxy Host: Coolify may
+    forward a different host. Explicit token login always stays independent
+    of an already-present browser cookie.
+    """
+    cookie=request.cookies.get("scalper_session")
+    has_explicit_token=bool(request.headers.get("x-admin-token"))
+    if cookie_valid(cookie) and not has_explicit_token:
         if request.method not in ("GET","HEAD","OPTIONS"):
-            origin=request.headers.get("origin")
-            host=request.headers.get("host","")
-            if not origin or origin not in (f"https://{host}",f"http://{host}"):
-                return Response(status_code=403,content="Invalid request origin")
-        headers=[(k,v) for k,v in request.scope["headers"] if k.lower()!=b"x-admin-token"]
+            if request.headers.get("x-scalper-csrf") != "1":
+                return Response(status_code=403,content="Missing CSRF protection header")
+            site=request.headers.get("sec-fetch-site")
+            if site in ("cross-site","same-site"):
+                return Response(status_code=403,content="Cross-origin request rejected")
+        headers=list(request.scope["headers"])
         headers.append((b"x-admin-token",ADMIN_TOKEN.encode()))
         request.scope["headers"]=headers
-    return await call_next(request)
+    response=await call_next(request)
+    if request.url.path.startswith(("/auth/","/control/")):
+        response.headers["Cache-Control"]="no-store"
+    return response
 
 
 @app.post("/auth/login")
