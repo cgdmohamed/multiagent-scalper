@@ -61,7 +61,11 @@ def compare(samples,initial_cash=1000.0,risk_fraction=.10):
                 "hold_max_closed_observation_drawdown_pct":drawdown_pct(baseline_curve),
                 "beats_same_windows_hold":equity>baseline,
             }
-    return {"mode":"OBSERVATIONAL_BENCHMARK","initial_cash":initial_cash,
+    eligible=[v for v in strategies.values() if v["samples"]>=50 and v["net_pct"]>0 and v["beats_same_windows_hold"] and v["max_closed_observation_drawdown_pct"]<=3]
+    eligible.sort(key=lambda v:(v["net_pct"]-v["hold_same_windows_net_pct"],-v["max_closed_observation_drawdown_pct"]),reverse=True)
+    return {"selection_mode":"RESEARCH_CANDIDATE_ONLY","selected_candidate":eligible[0] if eligible else None,
+            "selection_criteria":"At least 50 nonoverlapping 15m observations, positive modeled net result, above same-window long baseline and <=3% closed-observation drawdown. Requires out-of-sample validation before promotion.",
+            "mode":"OBSERVATIONAL_BENCHMARK","initial_cash":initial_cash,
             "fixed_allocation_pct":round(risk_fraction*100,2),
             "grid_status":"NOT_COMPARABLE_WITHOUT_OHLC_OR_TICK_REPLAY",
             "limitations":"Not historical backtesting. Fixed 15m observation endpoints, no intrabar SL/TP or actual fills. Closed-observation drawdown underestimates intratrade risk. Buy/hold is matched-window long exposure, NOT continuous buy-and-hold. No claim of superiority over Bybit bots.",
