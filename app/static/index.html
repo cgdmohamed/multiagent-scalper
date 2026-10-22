@@ -11,7 +11,7 @@ header{display:flex;align-items:center;justify-content:space-between;gap:18px;fl
 @media(max-width:850px){.grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.agent-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.app{padding:16px}.panel{padding:15px}}@media(max-width:480px){.stats{gap:8px}.tile{padding:12px}.tile .number{font-size:19px}header h1{font-size:18px}.auth input{min-width:150px;max-width:200px}}
  .tabs{display:flex;gap:8px;overflow-x:auto;padding:6px 0 13px;margin-bottom:8px;scrollbar-width:thin}.tabs button{white-space:nowrap;flex-shrink:0}.tabpanel{display:none}.tabpanel.visible{display:grid}.historyfilters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0}.historyfilters input,.historyfilters select{min-width:0;padding:9px;background:#101419;color:var(--text);border:1px solid var(--line);border-radius:8px}.historyfilters select{cursor:pointer}.historical{border-bottom:1px solid var(--line);padding:12px 0}.historical .soft{margin-top:5px}.tabpanel .decisions{max-height:420px}.tabpanel .scroll{max-height:400px}@media(max-width:850px){.tabs button{font-size:12px;padding:9px 10px}} </style></head>
 <body><div class="app">
-<header><div class="brand"><span class="brand-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 17 6-6 4 4 8-9"/><path d="M15 6h6v6"/></svg></span><div><h1>Scalper <span style="color:var(--gold)">Terminal</span></h1><div class="sub">BYBIT LINEAR FUTURES · 1× PAPER RESEARCH · NO LIVE ORDERS</div></div></div><div class="auth"><input type="password" id="token" autocomplete="off" placeholder="Admin token" aria-label="Admin token"><button class="primary" id="connect">Connect</button></div></header>
+<header><div class="brand"><span class="brand-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 17 6-6 4 4 8-9"/><path d="M15 6h6v6"/></svg></span><div><h1>Scalper <span style="color:var(--gold)">Terminal</span></h1><div class="sub">BYBIT LINEAR FUTURES · 1× PAPER RESEARCH · NO LIVE ORDERS</div></div></div><div class="auth"><input type="password" id="token" autocomplete="off" placeholder="Admin token" aria-label="Admin token"><button class="primary" id="connect">Connect</button><button id="logout" style="display:none">Log out</button><button id="pauseBot" style="display:none">Pause</button><button id="runBot" style="display:none">Run</button></div></header>
 <div class="statusline"><div id="liveStatus"><span class="dot"></span>Awaiting connection</div><div class="notice" id="notice">Enter admin token to view private research data</div></div>
 <section class="stats">
 <div class="tile"><div class="tilehead"><span>◈</span> Equity</div><div class="number" id="equity">—</div></div>
@@ -123,7 +123,7 @@ $('newPaperSession').onclick=async()=>{
  if(answer!=='START_NEW_PAPER_SESSION_KEEP_HISTORY')return;
  $('newPaperSession').disabled=true;
  try{
-  const res=await fetch('/paper/new-session?confirmation='+encodeURIComponent(answer),{method:'POST',headers:{'X-Admin-Token':token},cache:'no-store'});
+  const res=await fetch('/paper/new-session?confirmation='+encodeURIComponent(answer),{method:'POST',credentials:'same-origin',cache:'no-store'});
   const data=await res.json();
   if(!res.ok)throw Error(data.detail||'HTTP '+res.status);
   $('newSessionFeedback').textContent='New paper session recorded with '+data.starting_cash+' starting cash. Legacy history preserved.';
@@ -133,7 +133,7 @@ $('newPaperSession').onclick=async()=>{
 };
 $('historySearch').onclick=()=>loadHistory(true);
 $('historyMore').onclick=()=>loadHistory(false);
-async function fetchJSON(path,signal){const r=await fetch(path,{headers:{'X-Admin-Token':token},cache:'no-store',signal});if(!r.ok)throw Error('API '+r.status+' · '+path);return r.json()}
+async function fetchJSON(path,signal){const r=await fetch(path,{credentials:'same-origin',cache:'no-store',signal});if(!r.ok)throw Error('API '+r.status+' · '+path);return r.json()}
 async function refresh(){
  if(!token||busy)return;busy=true;const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
  try{
@@ -149,9 +149,12 @@ async function refresh(){
  $('feed').textContent=s.feed_connected?'Online':'Offline';$('feed').className='number '+(s.feed_connected?'good':'bad');
  $('ai').textContent=a.enabled?'Shadow':'Off';$('ai').className='number '+(a.enabled?'good':'muted');
  $('leverage').textContent=(s.leverage??1)+'×';
+ $('pauseBot').disabled=!!s.operator_paused;
+ $('runBot').disabled=!s.operator_paused;
+ $('entryProtection').textContent=s.operator_paused?'PAUSED':s.halted?'HALTED':'ACTIVE';
  $('entryProtection').textContent=s.halted?'HALTED':'ACTIVE';$('entryProtection').className='number '+(s.halted?'bad':'good');
  const protectionLabels={LEGACY_HISTORY_REQUIRES_RECONCILIATION:'Legacy trade history has no trusted wallet checkpoint. Manual reconciliation required.',CHECKPOINT_INVALID:'Saved wallet checkpoint cannot be validated.',RISK_LIMIT_OR_RESTORED_HALT:'Risk limit reached or halt restored from a previous session. Review account audit.',NONE:'New entries permitted only when all strategy and risk gates pass.'};
- $('entryProtectionReason').textContent=protectionLabels[s.halt_diagnostic]||s.halt_diagnostic||'—';
+ $('entryProtectionReason').textContent=s.operator_paused?'Operator paused new entries. Existing positions continue to be managed.':protectionLabels[s.halt_diagnostic]||s.halt_diagnostic||'—';
  $('open').innerHTML=Object.values(s.positions||{}).length?Object.values(s.positions).map(p=>{const m=s.position_analytics?.[p.symbol]||{};return row('<span class="symbol">'+escapeHTML(p.symbol)+'</span>',badge(p.direction,p.direction.toLowerCase()),escapeHTML(p.qty),'<span class="price">'+precise(p.entry)+'</span>','<span class="price">'+precise(m.estimated_exit_price)+'</span>','<span class="'+cls(m.unrealized_pnl||0)+'">'+signed(m.unrealized_pnl)+'</span>','<span class="price">'+precise(p.stop)+' / '+precise(p.target)+'</span>')}).join(''):row('<span class="muted">No open positions</span>','','','','','','');
  $('pairs').innerHTML=(s.ranked_pairs||[]).map(p=>row('<span class="symbol">'+escapeHTML(p.symbol)+'</span>',num(p.score),num(p.spread_bps),money(p.turnover24h))).join('');
  renderDecisions(d);
@@ -176,7 +179,36 @@ async function refresh(){
  }catch(e){$('liveStatus').innerHTML='<span class="dot"></span> Update failed · '+escapeHTML(e.name==='AbortError'?'Timed out':e.message)+' · Last sync '+(lastSuccess?new Date(lastSuccess).toLocaleTimeString():'never');$('notice').textContent='Retrying automatically; existing figures may be stale.'}
  finally{clearTimeout(timer);busy=false}
 }
-$('connect').onclick=()=>{token=$('token').value;$('token').value='';lastSignature='';historyLoaded=false;refresh();if(activeTab==='history')loadHistory(true)};
+function loggedIn(ok){
+ token=ok?'session':'';
+ $('token').style.display=ok?'none':'';
+ $('connect').style.display=ok?'none':'';
+ for(const id of ['logout','pauseBot','runBot'])$(id).style.display=ok?'inline-block':'none';
+}
+async function control(action){
+ if(!token)return;
+ try{
+ const r=await fetch('/control/'+action,{method:'POST',credentials:'same-origin'});
+ if(!r.ok)throw Error('Control API '+r.status);
+ await refresh();
+ }catch(err){$('notice').textContent=err.message}
+}
+$('pauseBot').onclick=()=>control('pause');
+$('runBot').onclick=()=>control('run');
+$('logout').onclick=async()=>{try{await fetch('/auth/logout',{method:'POST',credentials:'same-origin'})}finally{loggedIn(false);$('liveStatus').textContent='Signed out';$('notice').textContent='Enter admin token to reconnect';}};
+$('connect').onclick=async()=>{
+ const value=$('token').value;
+ if(!value)return;
+ try{
+ const r=await fetch('/auth/login',{method:'POST',credentials:'same-origin',headers:{'X-Admin-Token':value}});
+ if(!r.ok)throw Error('Invalid admin token or login unavailable');
+ $('token').value='';
+ loggedIn(true);lastSignature='';historyLoaded=false;refresh();
+ if(activeTab==='history')loadHistory(true);
+ }catch(err){$('notice').textContent=err.message}
+};
+fetch('/auth/session',{credentials:'same-origin',cache:'no-store'}).then(r=>{if(r.ok){loggedIn(true);refresh();}}).catch(()=>{});
+
 $('simple').onclick=()=>{mode='simple';$('simple').classList.add('active');$('technical').classList.remove('active');refresh()};
 $('technical').onclick=()=>{mode='technical';$('technical').classList.add('active');$('simple').classList.remove('active');refresh()};
 setInterval(()=>{if(!document.hidden)refresh()},POLL_MS);
