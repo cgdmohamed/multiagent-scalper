@@ -24,6 +24,7 @@ from .performance import report as performance_report, cooldown_study, account_a
 from .radar import OpportunityRadar
 from .reconciliation import analyze as analyze_legacy
 from .strategy_lab import StrategyLab
+from .research_indicators import ResearchIndicators
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -34,6 +35,7 @@ shadow_reviews = []
 shadow_tasks = set()
 radar = OpportunityRadar()
 lab = StrategyLab()
+indicators = ResearchIndicators()
 engine.research_only = True
 SESSION_STARTED_AT = time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime())
 PORTFOLIO_RECOVERY = "FRESH_NO_HISTORY"
@@ -201,6 +203,7 @@ async def prime_candles(client, symbols):
             start=int(bar[0])
             if start+duration <= now_ms:
                 engine.on_candle(symbol,interval,start,float(bar[4]))
+                if interval=="1":indicators.ingest_closed_candle(symbol,start,float(bar[2]),float(bar[3]),float(bar[4]))
     for symbol in symbols:
         for interval in ("1","3"):
             try:
@@ -256,6 +259,7 @@ async def market_stream():
                             for bar in event.get("data", []):
                                 if bar.get("confirm") is True:
                                     engine.on_candle(symbol, str(bar.get("interval")), int(bar.get("start")), float(bar.get("close")))
+                                    if str(bar.get("interval"))=="1":indicators.ingest_closed_candle(symbol,int(bar["start"]),float(bar["high"]),float(bar["low"]),float(bar["close"]))
                         continue
                     if not topic.startswith("orderbook.50."): continue
                     data = event.get("data", {})
@@ -286,7 +290,7 @@ async def market_stream():
                     before=len(engine.trades)
                     decision=engine.on_book(book,now_ms)
                     m1,m3=engine.candle_momentum(book.symbol)
-                    save_lab_changes(lab.observe(book,m1,m3))
+                    save_lab_changes(lab.observe(book,m1,m3,indicators.snapshot(symbol,now_ms)))
                     if decision:
                         persist("decision",asdict(decision))
                         # Only a bounded sample is sent to optional shadow reviewers.
@@ -331,6 +335,7 @@ async def radar_stream():
                     rows=message.get("data",[])
                     before_alerts=radar.count
                     radar.ingest(symbol,rows)
+                    indicators.ingest_trades(symbol,rows)
                     if radar.count>before_alerts:
                         persist("radar_alert",radar.alerts[0].copy())
                     if rows:
