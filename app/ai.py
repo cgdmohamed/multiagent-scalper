@@ -30,6 +30,7 @@ class ShadowAgents:
         self.reviews=0
         self.agent_errors={}
         self.agent_successes={}
+        self.blocked_roles={}
         self.news_monitor=news_monitor
 
     @property
@@ -60,12 +61,18 @@ class ShadowAgents:
             async with httpx.AsyncClient() as client:
                 # Sequential roles bound total API usage; each error counted, not silently voted in favor.
                 for role in ROLES:
+                    if role in self.blocked_roles:
+                        votes[role]={'action':'ABSTAIN','reason':f'API_UNAVAILABLE:{self.blocked_roles[role]}'}
+                        continue
                     try:
                         votes[role]=await self._vote(client,role,snapshot)
                         self.agent_successes[role]=self.agent_successes.get(role,0)+1
                     except Exception as exc:
                         code=str(exc) if str(exc).startswith("OPENAI_HTTP_") else type(exc).__name__
                         self.agent_errors[role]={"code":code,"model":self.chief_model if role=="chief" else self.model}
+                        # Stop repeating hard authorization failures for this role until process restart.
+                        if code in ("OPENAI_HTTP_401","OPENAI_HTTP_403","OPENAI_HTTP_404"):
+                            self.blocked_roles[role]=code
                         votes[role]={'action':'ABSTAIN','reason':f'API_ERROR:{code}'}
             callback({'decision_id':decision.decision_id,'symbol':decision.symbol,
                 'baseline_verdict':decision.verdict,'votes':votes,
