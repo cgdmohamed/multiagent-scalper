@@ -19,6 +19,7 @@ def store(db_path, symbol,interval,bars):
 
 def load(db_path,symbol,interval,limit=10000):
     with sqlite3.connect(db_path) as db:
+        if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='historical_klines'").fetchone():return []
         return db.execute("SELECT ts,open,high,low,close,volume FROM historical_klines WHERE symbol=? AND interval=? ORDER BY ts DESC LIMIT ?",(symbol,interval,limit)).fetchall()[::-1]
 
 async def download(db_path,symbol,interval="1",days=7):
