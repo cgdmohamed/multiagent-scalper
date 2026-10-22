@@ -27,7 +27,7 @@ header{display:flex;align-items:center;justify-content:space-between;gap:18px;fl
 <section class="panel wide"><div class="panelbar"><h2><span style="color:var(--blue)">◉</span> Latest decisions</h2><div class="toolbar"><button id="simple" class="active">Simple</button><button id="technical">Technical</button></div></div><div class="scroll decisions" id="decisions"></div><div class="section-foot">The stated “edge” is a heuristic, not a validated profit forecast.</div></section>
 <section class="panel"><div class="panelbar"><h2><span style="color:var(--green)">↗</span> Trade history</h2><span class="muted">Paper executions</span></div><div class="scroll"><table><thead><tr><th>Event</th><th>Instrument</th><th>Price</th><th>Closed P&amp;L</th></tr></thead><tbody id="trades"></tbody></table></div></section>
 <section class="panel"><div class="panelbar"><h2><span style="color:var(--gold)">▤</span> Market watchlist</h2><span class="muted">Dynamic ranking</span></div><div class="scroll"><table><thead><tr><th>Instrument</th><th>Score</th><th>Spread (bps)</th><th>24h turnover</th></tr></thead><tbody id="pairs"></tbody></table></div></section>
-<section class="panel wide"><div class="panelbar"><h2><span style="color:var(--blue)">✧</span> Multi-agent shadow reviews</h2><span class="tag">NO ORDER AUTHORITY</span></div><div class="muted" id="aiHealth">Not connected</div><div class="scroll" id="reviews"></div></section>
+<section class="panel wide"><div class="panelbar"><h2><span style="color:var(--gold)">▥</span> Strategy performance</h2><span class="muted">Closed paper trades only · modeled execution costs</span></div><div id="performanceStats" class="stats" style="grid-template-columns:repeat(auto-fit,minmax(135px,1fr));margin:0 0 15px"></div><div class="grid"><div><h3>By instrument</h3><div class="scroll"><table><tbody id="performanceSymbols"></tbody></table></div></div><div><h3>By direction / exit reason</h3><div class="scroll"><table><tbody id="performanceReasons"></tbody></table></div></div></div></section><section class="panel wide"><div class="panelbar"><h2><span style="color:var(--blue)">✧</span> Multi-agent shadow reviews</h2><span class="tag">NO ORDER AUTHORITY</span></div><div class="muted" id="aiHealth">Not connected</div><div class="scroll" id="reviews"></div></section>
 <section class="panel wide"><div class="panelbar"><h2><span style="color:var(--gold)">◷</span> News intelligence</h2><span class="muted" id="newsHealth">Not connected</span></div><div class="scroll" id="newsRows"></div></section>
 </main></div>
 <script>
@@ -82,7 +82,7 @@ async function fetchJSON(path,signal){const r=await fetch(path,{headers:{'X-Admi
 async function refresh(){
  if(!token||busy)return;busy=true;const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
  try{
- const [s,d,t,a,n]=await Promise.all(['/status','/decisions','/trades','/ai/status','/news/status'].map(p=>fetchJSON(p,controller.signal)));
+ const [s,d,t,a,n,p]=await Promise.all(['/status','/decisions','/trades','/ai/status','/news/status','/performance'].map(p=>fetchJSON(p,controller.signal)));
  const now=Date.now(),signature=JSON.stringify([s.equity,s.cash,s.positions,s.position_analytics,s.decisions,s.trades,d[0]?.decision_id,t[0]?.timestamp,a.reviews_started,a.agent_successes,a.agent_errors,n.last_update]);
  if(signature!==lastSignature){lastSignature=signature;lastChange=now}lastSuccess=now;connected=true;
  $('liveStatus').innerHTML='<span class="dot live"></span> Live · Synced '+new Date(now).toLocaleTimeString()+' · Data changed '+new Date(lastChange).toLocaleTimeString()+' · Every 2 seconds';
@@ -100,6 +100,12 @@ async function refresh(){
  const errors=Object.entries(a.agent_errors||{}).map(([role,e])=>role+': '+e.code);
  $('aiHealth').textContent='Standard: '+(a.model||'off')+' · Chief: '+(a.chief_model||'off')+' · Successful calls: '+Object.values(a.agent_successes||{}).reduce((v,x)=>v+x,0)+(errors.length?' · Errors: '+errors.join(', '):' · No current errors');
  renderReviews(a.recent_reviews||[]);
+ const metric=(label,value)=>'<div class="tile"><div class="tilehead">'+escapeHTML(label)+'</div><div class="number">'+escapeHTML(value)+'</div></div>';
+ const overall=p.overall||{};
+ $('performanceStats').innerHTML=metric('Closed trades',overall.trades??0)+metric('Win rate',overall.win_rate_pct==null?'N/A':overall.win_rate_pct+'%')+metric('Net closed P&L',money(overall.net_pnl))+metric('Profit factor',overall.profit_factor==null?'N/A':overall.profit_factor)+metric('Average win',money(overall.average_win))+metric('Average loss',money(overall.average_loss))+metric('Expectancy',money(overall.expectancy));
+ const groupRows=group=>Object.entries(group||{}).map(([name,values])=>row('<span class="symbol">'+escapeHTML(name)+'</span>',escapeHTML(values.trades)+' trades',escapeHTML(values.win_rate_pct==null?'N/A':values.win_rate_pct+'% win'),'<span class="'+cls(values.net_pnl)+'">'+signed(values.net_pnl)+'</span>')).join('')||'<tr><td class="muted">No closed trades yet</td></tr>';
+ $('performanceSymbols').innerHTML=groupRows(p.by_symbol);
+ $('performanceReasons').innerHTML=groupRows(p.by_direction)+groupRows(p.by_exit_reason);
  $('newsHealth').textContent='Sources '+n.sources_ok+'/'+n.sources_total+(n.last_error?' · Some feeds unavailable':'');
  $('newsRows').innerHTML=(n.items||[]).slice(0,15).map(item=>'<div class="news-item"><div class="news-title">'+escapeHTML(item.title)+'</div><div class="news-meta"><span>'+escapeHTML(item.source)+'</span><span>'+escapeHTML((item.assets||[]).join(', ')||'General market')+'</span>'+badge(item.high_impact?'HIGH IMPACT':'NORMAL',item.high_impact?'veto':'')+'<span>'+new Date(item.published_at*1000).toLocaleString()+'</span></div></div>').join('')||'<div class="empty">No recent verified headlines</div>';
  }catch(e){$('liveStatus').innerHTML='<span class="dot"></span> Update failed · '+escapeHTML(e.name==='AbortError'?'Timed out':e.message)+' · Last sync '+(lastSuccess?new Date(lastSuccess).toLocaleTimeString():'never');$('notice').textContent='Retrying automatically; existing figures may be stale.'}
