@@ -179,7 +179,7 @@ async function fetchJSON(path,signal){const headers=fallbackAdminToken?{'X-Admin
 async function refresh(){
  if(!token||busy)return;busy=true;const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
  try{
- const [s,d,t,a,n,p,r,account,study,recon]=await Promise.all(['/status','/decisions','/trades','/ai/status','/news/status','/performance','/radar/status','/accounting/audit','/performance/cooldown-study','/reconciliation'].map(p=>fetchJSON(p,controller.signal)));
+ const [s,d,t,a,n,p,r,account,study,recon,labData]=await Promise.all(['/status','/decisions','/trades','/ai/status','/news/status','/performance','/radar/status','/accounting/audit','/performance/cooldown-study','/reconciliation','/strategy-lab'].map(p=>fetchJSON(p,controller.signal)));
  const now=Date.now(),signature=JSON.stringify([s.equity,s.cash,s.positions,s.position_analytics,s.decisions,s.trades,d[0]?.decision_id,t[0]?.timestamp,a.reviews_started,a.agent_successes,a.agent_errors,n.last_update]);
  if(signature!==lastSignature){lastSignature=signature;lastChange=now}lastSuccess=now;connected=true;
  $('liveStatus').innerHTML='<span class="dot live"></span> Live · Synced '+new Date(now).toLocaleTimeString()+' · Data changed '+new Date(lastChange).toLocaleTimeString()+' · Every 2 seconds';
@@ -214,6 +214,9 @@ async function refresh(){
     '<div class="labels"><span>STOP</span><span>'+progressText+'</span><span>TARGET</span></div></div>';
  };
  $('open').innerHTML=Object.values(s.positions||{}).length?Object.values(s.positions).map(p=>{const m=s.position_analytics?.[p.symbol]||{};return row('<span class="symbol">'+escapeHTML(p.symbol)+'</span>',badge(p.direction,p.direction.toLowerCase()),escapeHTML(p.qty),'<span class="price">'+precise(p.entry)+'</span>','<span class="price">'+(m.price_fresh?precise(m.estimated_exit_price):'Stale')+'</span>','<span class="'+cls(m.unrealized_pnl||0)+'">'+signed(m.unrealized_pnl)+'</span>','<span class="price">'+precise(p.stop)+' / '+precise(p.target)+'</span>',progressCell(m))}).join(''):row('<span class="muted">No open positions</span>','','','','','','','');
+ $('labNote').textContent='Research only: '+(s.research_only?'ON':'OFF')+' · No new paper entries. AI reviews of rejected signals disabled.';
+ $('labStats').innerHTML=Object.entries(labData.strategies||{}).map(([name,v])=>row(escapeHTML(name),escapeHTML(v.signals),escapeHTML(v.observed_15m),v.avg_15m_net_bps==null?'Pending':escapeHTML(v.avg_15m_net_bps),v.positive_15m_pct==null?'Pending':escapeHTML(v.positive_15m_pct)+'%')).join('');
+ $('labSignals').innerHTML=(labData.latest||[]).map(v=>row(escapeHTML(v.timestamp),escapeHTML(v.symbol),escapeHTML(v.strategy),escapeHTML(v.direction),escapeHTML(v.regime),v.returns?.['15m']==null?'Pending':escapeHTML(v.returns['15m']))).join('');
  $('pairs').innerHTML=(s.ranked_pairs||[]).map(p=>row('<span class="symbol">'+escapeHTML(p.symbol)+'</span>',num(p.score),num(p.spread_bps),money(p.turnover24h))).join('');
  renderDecisions(d);
  $('trades').innerHTML=t.length?t.slice(0,35).map(v=>row(badge(v.event+' '+(v.direction||''),v.event==='OPEN'?'hold':v.pnl>=0?'approve':'veto'),'<span class="symbol">'+escapeHTML(v.symbol)+'</span>','<span class="price">'+precise(v.price)+'</span>','<span class="'+cls(v.pnl||0)+'">'+signed(v.pnl)+'</span>')).join(''):row('<span class="muted">No paper trades</span>','','','');
