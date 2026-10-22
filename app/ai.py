@@ -22,7 +22,7 @@ def validate_vote(v):
 class ShadowAgents:
     def __init__(self, key=None, model=None, max_reviews=10, news_monitor=None):
         self.key=key or os.getenv('OPENAI_API_KEY','')
-        self.model=model or os.getenv('OPENAI_MODEL','gpt-5.6-terra')
+        self.model=model or os.getenv('OPENAI_MODEL','gpt-6-luna')
         self.sem=asyncio.Semaphore(1)
         self.pending=set()
         self.max_reviews=max_reviews
