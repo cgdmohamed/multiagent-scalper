@@ -61,3 +61,27 @@ def test_conflicting_timeframes_reported_explicitly():
     d=e.evaluate(book("LONG"),600000)
     assert "TREND_TIMEFRAMES_CONFLICT" in d.reasons
     assert d.market["direction"] is None
+
+def test_position_analytics_short_and_realized_totals():
+    e=setup_engine("SHORT")
+    b=book("SHORT")
+    e._enter(b,600000,"analytics-short","SHORT")
+    p=e.positions["BTCUSDT"]
+    e.books["BTCUSDT"]=Book("BTCUSDT",p.entry*.98,p.entry*.9801,100,100,601000,601000,12)
+    analytics=e.position_analytics()["BTCUSDT"]
+    assert analytics["unrealized_pnl"]>0
+    assert analytics["estimated_exit_fee"]>0
+    assert e.status()["unrealized_pnl"]>0
+    e._exit(e.books["BTCUSDT"],601000)
+    status=e.status()
+    assert status["realized_pnl"]>0
+    assert status["unrealized_pnl"]==0
+    assert status["closed_trades"]==1
+
+def test_short_marked_loss_when_price_rises():
+    e=setup_engine("SHORT")
+    b=book("SHORT")
+    e._enter(b,600000,"analytics-loss","SHORT")
+    p=e.positions["BTCUSDT"]
+    e.books["BTCUSDT"]=Book("BTCUSDT",p.entry*1.01,p.entry*1.0101,100,100,601000,601000,12)
+    assert e.position_analytics()["BTCUSDT"]["unrealized_pnl"]<0
