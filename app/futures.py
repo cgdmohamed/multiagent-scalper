@@ -54,11 +54,11 @@ class FuturesPaperEngine(PaperEngine):
         if now_ms-self.last_eval.get(book.symbol,0)<self.cfg.min_interval_ms:return None
         self.last_eval[book.symbol]=now_ms
         votes,momentum=self.agents(book)
-        reasons=self.gates(book,now_ms)
+        # Legacy six-tick warm-up is irrelevant once closed candles are available.\n        reasons=[r for r in self.gates(book,now_ms) if r != "INSUFFICIENT_HISTORY"]
         m1,m3=self.candle_momentum(book.symbol)
         direction="LONG" if votes[0].action=="BUY" else "SHORT" if votes[0].action=="SELL" else None
         if m1 is None:reasons.append("CANDLE_HISTORY_NOT_READY")
-        if direction is None:reasons.append("MARKET_NOT_CONFIRMED")
+        if direction is None:reasons.append("TREND_TIMEFRAMES_CONFLICT" if m1 is not None and m3 is not None and m1*m3<0 else "MARKET_NOT_CONFIRMED")
         if direction is not None and votes[1].action!=votes[0].action:reasons.append("QUANT_NOT_CONFIRMED")
         if votes[3].action=="VETO":reasons.append("ADVERSARY_VETO")
         edge=min(45.,max(0.,abs(momentum)*.8+abs(book.imbalance)*25.))
@@ -66,7 +66,7 @@ class FuturesPaperEngine(PaperEngine):
         if edge<=cost+self.cfg.minimum_edge_bps:reasons.append("COST_EXCEEDS_HYPOTHETICAL_EDGE")
         decision=Decision(str(uuid.uuid4()),book.symbol,utcnow(),f"{book.symbol}:{book.update_id}",votes,"SKIP" if reasons else "APPROVE",reasons,
             {"direction":direction,"mid":book.mid,"spread_bps":book.spread_bps,"imbalance":book.imbalance,
-             "momentum_bps":momentum,"trend_3m_bps":m3,"estimated_edge_bps":edge,"roundtrip_cost_bps":cost})
+             "momentum_bps":momentum,"trend_3m_bps":m3,"estimated_edge_bps":edge,"roundtrip_cost_bps":cost,"required_imbalance":(.18 if direction=="LONG" else -.18 if direction=="SHORT" else None)})
         self.decisions.appendleft(decision)
         if not reasons:
             try:self._enter(book,now_ms,decision.decision_id,direction)
