@@ -101,6 +101,7 @@ class PaperEngine:
         self.day_start_equity = self.cfg.initial_cash
         self.halted = False
         self.operator_paused = False
+        self.research_only = False
         self.last_eval: dict[str,int] = {}
         self.last_error: str | None = None
         self.feed_connected = False
@@ -131,6 +132,7 @@ class PaperEngine:
             self.halted = True
         failures = []
         if self.halted: failures.append("CIRCUIT_BREAKER")
+        if self.research_only: failures.append("RESEARCH_ONLY_NO_ENTRIES")
         if self.operator_paused: failures.append("OPERATOR_PAUSED")
         if not (book.bid > 0 and book.ask > book.bid): failures.append("INVALID_BOOK")
         if now_ms - book.received_ms > self.cfg.max_book_age_ms or book.received_ms > now_ms+1000: failures.append("STALE_BOOK")
