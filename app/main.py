@@ -23,6 +23,7 @@ from .futures import FuturesPaperEngine, FuturesPosition
 from .performance import report as performance_report, cooldown_study, account_audit
 from .radar import OpportunityRadar
 from .reconciliation import analyze as analyze_legacy
+from .strategy_lab import StrategyLab
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -32,6 +33,8 @@ shadow = ShadowAgents(max_reviews=int(os.getenv("AI_MAX_REVIEWS_PER_RUN", "20"))
 shadow_reviews = []
 shadow_tasks = set()
 radar = OpportunityRadar()
+lab = StrategyLab()
+engine.research_only = True
 SESSION_STARTED_AT = time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime())
 PORTFOLIO_RECOVERY = "FRESH_NO_HISTORY"
 
@@ -260,10 +263,12 @@ async def market_stream():
                     book=Book(symbol,bid,ask,sum(depth[symbol][0].values()),sum(depth[symbol][1].values()),exchange_ms,now_ms,int(data.get("u") or 0))
                     before=len(engine.trades)
                     decision=engine.on_book(book,now_ms)
+                    m1,m3=engine.candle_momentum(book.symbol)
+                    lab.observe(book,m1,m3)
                     if decision:
                         persist("decision",asdict(decision))
                         # Only a bounded sample is sent to optional shadow reviewers.
-                        if shadow.enabled and shadow.reviews < shadow.max_reviews and len(shadow_tasks) < 2:
+                        if (not engine.research_only and decision.verdict=='APPROVE' and shadow.enabled and shadow.reviews < shadow.max_reviews and len(shadow_tasks) < 2):
                             task = asyncio.create_task(shadow.review(decision,record_shadow))
                             shadow_tasks.add(task)
                             task.add_done_callback(shadow_tasks.discard)
@@ -463,6 +468,7 @@ def health(): return {"ok":True,"mode":"FUTURES_PAPER_ONLY","feed_connected":eng
 def status(x_admin_token: str | None=Header(default=None)):
     secure(x_admin_token)
     current=engine.status()
+    current["research_only"]=engine.research_only
     current["bot_state"]="STOPPED" if BOT_STOPPED else "PAUSED" if MANUALLY_PAUSED else "RISK_HALTED" if engine.halted else "RUNNING"
     current["operator_paused"]=MANUALLY_PAUSED
     current["bot_stopped"]=BOT_STOPPED
@@ -566,6 +572,11 @@ def start_fresh_paper_session(confirmation: str, x_admin_token: str | None=Heade
     return {"status":"NEW_PAPER_SESSION_STARTED","starting_cash":engine.cfg.initial_cash,
             "legacy_history_preserved":True,"execution_mode":"PAPER_ONLY"}
 
+
+@app.get("/strategy-lab")
+def strategy_lab_status(x_admin_token: str | None=Header(default=None)):
+    secure(x_admin_token)
+    return lab.report()
 
 @app.get("/events")
 def events(x_admin_token: str | None=Header(default=None), limit:int=50,
