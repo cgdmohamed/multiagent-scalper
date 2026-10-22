@@ -90,6 +90,8 @@ class PaperEngine:
         self.positions: dict[str,Position] = {}
         self.books: dict[str,Book] = {}
         self.history = {s: deque(maxlen=45) for s in SYMBOLS}
+        # Closed exchange candles only; orderbook update frequency does not define momentum.
+        self.candles: dict[str, dict[str, deque]] = {}
         self.candidates: list[PairCandidate] = []
         self.candidate_rules: dict[str,PairCandidate] = {}
         self.decisions: deque[Decision] = deque(maxlen=500)
@@ -137,12 +139,33 @@ class PaperEngine:
         if len(self.history.get(book.symbol,())) < 6: failures.append("INSUFFICIENT_HISTORY")
         return failures
 
+    def on_candle(self, symbol: str, interval: str, start: int, close: float):
+        if interval not in ("1", "3") or not math.isfinite(close) or close <= 0:
+            return
+        bars = self.candles.setdefault(symbol, {}).setdefault(interval, deque(maxlen=100))
+        # Ignore replayed/older bars; replace an identical finalized timestamp.
+        if bars and start < bars[-1][0]:
+            return
+        if bars and start == bars[-1][0]:
+            bars[-1] = (start, close)
+        else:
+            bars.append((start, close))
+
+    def candle_momentum(self, symbol: str):
+        bars = self.candles.get(symbol, {})
+        one, three = list(bars.get("1", [])), list(bars.get("3", []))
+        if len(one) < 4 or len(three) < 3:
+            return None, None
+        return (one[-1][1]/one[-4][1]-1)*10000, (three[-1][1]/three[-3][1]-1)*10000
+
     def agents(self, book: Book):
-        series = list(self.history[book.symbol]); momentum = (series[-1] / series[-6] - 1)*10000 if len(series)>=6 else 0
-        market = AgentOpinion("market", "BUY" if momentum > 1.0 else "HOLD", min(100,abs(momentum)*4), [f"momentum_5samples_bps={momentum:.3f}"], "Positive short-window momentum required")
+        momentum, trend3 = self.candle_momentum(book.symbol)
+        # Absence of confirmed exchange bars is a no-trade condition.
+        momentum = momentum if momentum is not None else 0.0
+        market = AgentOpinion("market", "BUY" if momentum > 1.0 and trend3 is not None and trend3 > 0 else "HOLD", min(100,abs(momentum)*4), [f"closed_1m_momentum_bps={momentum:.3f}",f"closed_3m_trend_bps={trend3 if trend3 is not None else 'N/A'}"], "Requires positive 1m momentum and 3m trend from CLOSED candles")
         quant = AgentOpinion("quant", "BUY" if book.imbalance > .18 else "HOLD", min(100,abs(book.imbalance)*100), [f"depth_imbalance={book.imbalance:.4f}"], "Bid-side book depth exceeds ask side")
         sentiment = AgentOpinion("sentiment", "HOLD", 0, ["NO_NEWS_FEED"], "Not implemented; abstains rather than fabricating sentiment")
-        adversary = AgentOpinion("devils_advocate", "VETO" if book.imbalance < .10 or momentum < 0 else "HOLD", 100, [f"imbalance={book.imbalance:.4f}",f"momentum_bps={momentum:.3f}"], "Rejects weak liquidity or negative momentum")
+        adversary = AgentOpinion("devils_advocate", "VETO" if book.imbalance < .10 or momentum < 0 or trend3 is None or trend3 < 0 else "HOLD", 100, [f"imbalance={book.imbalance:.4f}",f"momentum_bps={momentum:.3f}"], "Rejects weak liquidity or negative momentum")
         return [market,quant,sentiment,adversary], momentum
 
     def evaluate(self, book:Book, now_ms:int):
@@ -151,6 +174,8 @@ class PaperEngine:
         self.last_eval[book.symbol] = now_ms
         opinions,momentum = self.agents(book)
         reasons=self.gates(book,now_ms)
+        m1, m3 = self.candle_momentum(book.symbol)
+        if m1 is None: reasons.append("CANDLE_HISTORY_NOT_READY")
         if opinions[0].action != "BUY": reasons.append("MARKET_NOT_CONFIRMED")
         if opinions[1].action != "BUY": reasons.append("QUANT_NOT_CONFIRMED")
         if opinions[3].action == "VETO": reasons.append("ADVERSARY_VETO")
@@ -159,7 +184,10 @@ class PaperEngine:
         roundtrip_cost_bps = 2*(self.cfg.taker_fee_bps+self.cfg.slippage_bps_per_side)+book.spread_bps
         if estimated_gross_edge_bps <= roundtrip_cost_bps+self.cfg.minimum_edge_bps:
             reasons.append("COST_EXCEEDS_HYPOTHETICAL_EDGE")
-        decision=Decision(str(uuid.uuid4()),book.symbol,utcnow(),f"{book.symbol}:{book.update_id}",opinions,"SKIP" if reasons else "APPROVE",reasons,{"mid":book.mid,"spread_bps":book.spread_bps,"imbalance":book.imbalance,"momentum_bps":momentum,"estimated_edge_bps":estimated_gross_edge_bps,"roundtrip_cost_bps":roundtrip_cost_bps})
+        metrics={"mid":book.mid,"spread_bps":book.spread_bps,"imbalance":book.imbalance,
+                 "momentum_bps":momentum,"trend_3m_bps":m3,"estimated_edge_bps":estimated_gross_edge_bps,
+                 "roundtrip_cost_bps":roundtrip_cost_bps}
+        decision=Decision(str(uuid.uuid4()),book.symbol,utcnow(),f"{book.symbol}:{book.update_id}",opinions,"SKIP" if reasons else "APPROVE",reasons,metrics)
         self.decisions.appendleft(decision)
         if not reasons:
             try:
@@ -217,4 +245,4 @@ class PaperEngine:
         return None
 
     def status(self):
-        return {"mode":"PAPER_ONLY","order_router":"PAPER_ONLY","router_halted":self.order_manager.halted,"feed_connected":self.feed_connected,"cash":self.cash,"equity":self.equity(),"peak_equity":self.peak_equity,"halted":self.halted,"positions":{k:asdict(v) for k,v in self.positions.items()},"ranked_pairs":[asdict(x) for x in self.candidates],"books":{k:asdict(v) for k,v in self.books.items()},"decisions":len(self.decisions),"trades":len(self.trades),"last_error":self.last_error}
+        return {"mode":"PAPER_ONLY","candle_readiness":{s:{"1m":len(v.get("1",())),"3m":len(v.get("3",()))} for s,v in self.candles.items()},"order_router":"PAPER_ONLY","router_halted":self.order_manager.halted,"feed_connected":self.feed_connected,"cash":self.cash,"equity":self.equity(),"peak_equity":self.peak_equity,"halted":self.halted,"positions":{k:asdict(v) for k,v in self.positions.items()},"ranked_pairs":[asdict(x) for x in self.candidates],"books":{k:asdict(v) for k,v in self.books.items()},"decisions":len(self.decisions),"trades":len(self.trades),"last_error":self.last_error}
