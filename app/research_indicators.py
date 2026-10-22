@@ -4,6 +4,7 @@ from datetime import datetime,timezone
 import math
 import time
 from .technical_indicators import snapshot as technical_snapshot
+from .market_regime_strategies import evaluate as research_strategy_evaluate
 
 class ResearchIndicators:
     def __init__(self):
