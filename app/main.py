@@ -91,6 +91,28 @@ def restore_operator_pause():
     engine.operator_paused=MANUALLY_PAUSED or BOT_STOPPED
 
 
+def save_lab_changes(items):
+    if not items:return
+    DB_PATH.parent.mkdir(parents=True,exist_ok=True)
+    with sqlite3.connect(DB_PATH) as db:
+        db.execute("CREATE TABLE IF NOT EXISTS lab_samples (id TEXT PRIMARY KEY, payload TEXT NOT NULL)")
+        db.executemany("INSERT INTO lab_samples(id,payload) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",[(item["id"],json.dumps(item)) for item in items])
+
+
+def restore_lab():
+    if not DB_PATH.exists():return
+    with sqlite3.connect(DB_PATH) as db:
+        if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='lab_samples'").fetchone():return
+        rows=[json.loads(row[0]) for row in db.execute("SELECT payload FROM lab_samples ORDER BY rowid DESC LIMIT 2000")]
+    from collections import deque
+    lab.samples=deque(rows,maxlen=2000)
+    now=int(time.time()*1000)
+    lab.pending=[row for row in rows if now-row["at_ms"]<900000 and "15m" not in row["returns"]]
+    for row in reversed(rows):
+        key=(row["symbol"],row["strategy"])
+        lab.last_signal[key]=max(lab.last_signal.get(key,0),row["at_ms"])
+
+
 def persist(kind, payload):
     DB_PATH.parent.mkdir(parents=True,exist_ok=True)
     with sqlite3.connect(DB_PATH) as db:
@@ -264,7 +286,7 @@ async def market_stream():
                     before=len(engine.trades)
                     decision=engine.on_book(book,now_ms)
                     m1,m3=engine.candle_momentum(book.symbol)
-                    lab.observe(book,m1,m3)
+                    save_lab_changes(lab.observe(book,m1,m3))
                     if decision:
                         persist("decision",asdict(decision))
                         # Only a bounded sample is sent to optional shadow reviewers.
@@ -350,6 +372,7 @@ async def shutdown_bot_tasks():
 async def lifespan(app):
     restore_portfolio()
     restore_operator_pause()
+    restore_lab()
     launch_bot_tasks()
     try: yield
     finally:
