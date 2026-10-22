@@ -76,7 +76,7 @@ html,body{max-width:100%;overflow-x:hidden}
 </div><div class="grid tabpanel" data-panel="history"><section class="panel wide"><div class="panelbar"><h2>◷ Historical events</h2><span class="muted">SQLite archive · across restarts</span></div><div class="historyfilters"><select id="historyKind" aria-label="Event type"><option value="">All events</option><option value="trade">Trades</option><option value="decision">Decisions</option><option value="shadow_review">AI reviews</option><option value="radar_alert">Radar alerts</option></select><input id="historySymbol" placeholder="Symbol e.g. BTCUSDT" aria-label="Filter symbol"><input id="historyFrom" type="date" aria-label="From date"><input id="historyTo" type="date" aria-label="To date"><button id="historySearch">Search</button><button id="historyMore">Load older</button></div><div id="historyStatus" class="muted">Choose History to load saved events.</div><div id="historyRows" class="scroll"></div></section></div></main></div>
 <script>
 'use strict';
-let token='',fallbackAdminToken='',busy=false,mode='simple',lastSignature='',lastChange=0,lastSuccess=0,connected=false,activeTab='overview',historyCursor=null,historyLoaded=false;
+let token='',fallbackAdminToken='',controlBusy=false,busy=false,mode='simple',lastSignature='',lastChange=0,lastSuccess=0,connected=false,activeTab='overview',historyCursor=null,historyLoaded=false;
 const POLL_MS=2000,$=id=>document.getElementById(id);
 const escapeHTML=v=>String(v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
 const money=n=>n==null?'—':Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -196,8 +196,8 @@ async function refresh(){
  $('leverage').textContent=(s.leverage??1)+'×';
  $('stopBot').style.display=s.bot_stopped?'none':'inline-block';
  $('startBot').style.display=s.bot_stopped?'inline-block':'none';
- $('pauseBot').disabled=!!s.operator_paused||!!s.bot_stopped;
- $('runBot').disabled=!s.operator_paused||!!s.bot_stopped;
+ $('pauseBot').disabled=controlBusy||!!s.operator_paused||!!s.bot_stopped;
+ $('runBot').disabled=controlBusy||!s.operator_paused||!!s.bot_stopped;
  $('entryProtection').textContent=s.bot_stopped?'STOPPED':s.operator_paused?'PAUSED':s.halted?'HALTED':'ACTIVE';
  $('entryProtection').className='number '+(s.bot_stopped||s.operator_paused||s.halted?'bad':'good');
  const protectionLabels={STOP_COOLDOWN_5M:'Five-minute re-entry cooldown after a stop loss.',PERFORMANCE_CIRCUIT_BREAKER:'Performance limit reached; new entries blocked.',LEGACY_HISTORY_REQUIRES_RECONCILIATION:'Legacy trade history has no trusted wallet checkpoint. Manual reconciliation required.',CHECKPOINT_INVALID:'Saved wallet checkpoint cannot be validated.',RISK_LIMIT_OR_RESTORED_HALT:'Risk limit reached or halt restored from a previous session. Review account audit.',NONE:'New entries permitted only when all strategy and risk gates pass.'};
@@ -243,16 +243,42 @@ function loggedIn(ok){
  $('connect').style.display=ok?'none':'';
  for(const id of ['logout','pauseBot','runBot','stopBot','startBot'])$(id).style.display=ok?'inline-block':'none';
 }
+const controlIds=['pauseBot','runBot','stopBot','startBot'];
+function controlFeedback(message,isError=false){
+ $('botStateBanner').textContent=message;
+ $('botStateBanner').style.borderColor=isError?'#f6465d':'#f0b90b';
+ $('notice').textContent=message;
+}
 async function control(action){
- if(!token)return;
+ if(!token||controlBusy)return;
+ controlBusy=true;
+ const clickedId={pause:'pauseBot',run:'runBot',stop:'stopBot',start:'startBot'}[action];
+ const button=$(clickedId),oldLabel=button.textContent;
+ controlIds.forEach(id=>$(id).disabled=true);
+ button.textContent=oldLabel+' …';
+ controlFeedback('Sending '+action.toUpperCase()+' command…');
+ const controller=new AbortController();
+ const timeout=setTimeout(()=>controller.abort(),15000);
  try{
- const r=await fetch('/control/'+action,{method:'POST',credentials:'same-origin',headers:{'X-Scalper-CSRF':'1',...(fallbackAdminToken?{'X-Admin-Token':fallbackAdminToken}:{})}});
- if(!r.ok){const err=await r.json().catch(()=>({}));throw Error(err.detail||'Control API '+r.status)}
- const outcome=await r.json();
- const state=await fetchJSON('/status');
- $('notice').textContent='Command confirmed · BOT '+state.bot_state;
- busy=false;await refresh();
- }catch(err){$('notice').textContent=err.message}
+  const r=await fetch('/control/'+action,{method:'POST',credentials:'same-origin',signal:controller.signal,headers:{'X-Scalper-CSRF':'1',...(fallbackAdminToken?{'X-Admin-Token':fallbackAdminToken}:{})}});
+  const result=await r.json().catch(()=>({}));
+  if(!r.ok)throw Error(result.detail||'Control API '+r.status);
+  const state=await fetchJSON('/status');
+  controlFeedback('Confirmed by server: BOT '+state.bot_state);
+  $('stopBot').style.display=state.bot_stopped?'none':'inline-block';
+  $('startBot').style.display=state.bot_stopped?'inline-block':'none';
+  $('entryProtection').textContent=state.bot_state;
+  $('botStateBanner').style.borderColor=state.bot_stopped?'#f6465d':state.operator_paused||state.halted?'#f0b90b':'#02c076';
+  busy=false;
+  await refresh();
+ }catch(err){
+  controlFeedback('Command not confirmed: '+(err.name==='AbortError'?'request timed out; check actual status before retrying':err.message),true);
+ }finally{
+  clearTimeout(timeout);
+  button.textContent=oldLabel;
+  controlBusy=false;
+  controlIds.forEach(id=>$(id).disabled=false);
+ }
 }
 $('pauseBot').onclick=()=>control('pause');
 $('runBot').onclick=()=>control('run');
