@@ -202,7 +202,7 @@ async function refresh(){
  $('entryProtection').textContent=s.bot_stopped?'STOPPED':s.research_only?'RESEARCH ONLY':s.operator_paused?'PAUSED':s.halted?'HALTED':'ACTIVE';
  $('entryProtection').className='number '+(s.bot_stopped||s.operator_paused||s.halted?'bad':'good');
  const protectionLabels={STOP_COOLDOWN_5M:'Five-minute re-entry cooldown after a stop loss.',PERFORMANCE_CIRCUIT_BREAKER:'Performance limit reached; new entries blocked.',LEGACY_HISTORY_REQUIRES_RECONCILIATION:'Legacy trade history has no trusted wallet checkpoint. Manual reconciliation required.',CHECKPOINT_INVALID:'Saved wallet checkpoint cannot be validated.',RISK_LIMIT_OR_RESTORED_HALT:'Risk limit reached or halt restored from a previous session. Review account audit.',NONE:'New entries permitted only when all strategy and risk gates pass.'};
- $('entryProtectionReason').textContent=s.bot_stopped?'All background workers stopped; dashboard remains available.':s.operator_paused?'Operator paused new entries. Existing positions continue to be managed.':protectionLabels[s.halt_diagnostic]||s.halt_diagnostic||'—';
+ $('entryProtectionReason').textContent=s.capital_guardian && !s.capital_guardian.allowed?'Capital Guardian: '+s.capital_guardian.reasons.join(', '):s.bot_stopped?'All background workers stopped; dashboard remains available.':s.operator_paused?'Operator paused new entries. Existing positions continue to be managed.':protectionLabels[s.halt_diagnostic]||s.halt_diagnostic||'—';
  const progressCell=m=>{
   const fresh=m.price_fresh===true && Number.isFinite(m.stop_target_progress_pct);
   const percent=fresh?Math.max(0,Math.min(100,m.stop_target_progress_pct)):0;
