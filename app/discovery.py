@@ -5,6 +5,12 @@ import math
 import httpx
 
 BASE = 'https://api.bybit.com'
+# Curated watchlist is a category hint, never a guarantee of a live listing.
+MEME_BASES = frozenset({'DOGE','SHIB','PEPE','BONK','WIF','FLOKI','MEME','BRETT','POPCAT','MOG','TURBO','NEIRO','BABYDOGE','BOME','PENGU','TRUMP','FARTCOIN','SPX','PNUT','GOAT','MEW','ACT','DOGS','NOT','PEOPLE','1000PEPE','1000SHIB','1000BONK','1000FLOKI','1000RATS','1000SATS'})
+
+def is_meme(symbol):
+    return symbol.removesuffix('USDT') in MEME_BASES
+
 
 @dataclass(frozen=True)
 class PairCandidate:
@@ -49,7 +55,7 @@ def discover(instruments: list[dict], tickers: list[dict], *, top_n: int = 5, mi
         except (ValueError, TypeError, KeyError, OverflowError): continue
     return sorted(candidates,key=lambda c:(-c.score,-c.turnover24h,c.symbol))[:max(0,top_n)]
 
-async def fetch_candidates(client: httpx.AsyncClient, *, top_n=5, min_turnover=5_000_000, max_spread_bps=8.0):
+async def fetch_candidates(client: httpx.AsyncClient, *, top_n=5, min_turnover=5_000_000, max_spread_bps=8.0, radar_mode=False, meme_slots=15):
     async def fetch(path, params):
         r = await client.get(f'{BASE}{path}',params=params,timeout=12.0)
         r.raise_for_status()
@@ -68,4 +74,18 @@ async def fetch_candidates(client: httpx.AsyncClient, *, top_n=5, min_turnover=5
         cursor=next_cursor
     else: raise RuntimeError('Instrument pagination exceeded bound')
     tickers=(await fetch('/v5/market/tickers',{'category':'linear'})).get('list',[])
-    return discover(instruments,tickers,top_n=top_n,min_turnover=min_turnover,max_spread_bps=max_spread_bps)
+    if not radar_mode:
+        return discover(instruments,tickers,top_n=top_n,min_turnover=min_turnover,max_spread_bps=max_spread_bps)
+    # Radar-only: lower liquidity floor, broader spread bound, and a dedicated
+    # meme quota. Never send this list to the execution whitelist.
+    pool=discover(instruments,tickers,top_n=1500,min_turnover=min_turnover,max_spread_bps=max_spread_bps)
+    meme=[p for p in pool if is_meme(p.symbol)]
+    other=[p for p in pool if not is_meme(p.symbol)]
+    # Rank by a bounded volatility/liquidity proxy; live 15s momentum is
+    # calculated independently from executed trades, never from 24h change.
+    def rank(p):
+        return (min(abs(p.change24h_pct),25)*2 + min(math.log10(max(p.turnover24h,1)),10)*3 - p.spread_bps*1.5)
+    meme.sort(key=rank,reverse=True)
+    other.sort(key=rank,reverse=True)
+    chosen=meme[:min(meme_slots,top_n)]+other[:max(0,top_n-min(len(meme),meme_slots,top_n))]
+    return sorted(chosen,key=rank,reverse=True)
