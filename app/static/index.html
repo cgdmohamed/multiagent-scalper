@@ -165,7 +165,7 @@ $('newPaperSession').onclick=async()=>{
  if(answer!=='START_NEW_PAPER_SESSION_KEEP_HISTORY')return;
  $('newPaperSession').disabled=true;
  try{
-  const res=await fetch('/paper/new-session?confirmation='+encodeURIComponent(answer),{method:'POST',credentials:'same-origin',cache:'no-store'});
+  const res=await fetch('/paper/new-session?confirmation='+encodeURIComponent(answer),{method:'POST',credentials:'same-origin',headers:{'X-Scalper-CSRF':'1'},cache:'no-store'});
   const data=await res.json();
   if(!res.ok)throw Error(data.detail||'HTTP '+res.status);
   $('newSessionFeedback').textContent='New paper session recorded with '+data.starting_cash+' starting cash. Legacy history preserved.';
@@ -250,7 +250,7 @@ $('connect').onclick=async()=>{
  const value=$('token').value;
  if(!value)return;
  try{
- const r=await fetch('/auth/login',{method:'POST',credentials:'same-origin',headers:{'X-Admin-Token':value}});
+ const r=await fetch('/auth/login',{method:'POST',credentials:'same-origin',headers:{'X-Admin-Token':value,'X-Scalper-CSRF':'1'}});
  if(!r.ok)throw Error('Invalid admin token or login unavailable');
  $('token').value='';
  loggedIn(true);lastSignature='';historyLoaded=false;refresh();
