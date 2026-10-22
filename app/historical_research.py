@@ -91,3 +91,21 @@ def replay(bars,fee_bps=10,slippage_bps=2,stop_bps=45,target_bps=100):
         peak=max(peak,equity);worst=max(worst,(peak-equity)/peak*100)
         wins+=net>0;trades+=1;i=j+1
     return {"trades":trades,"net_pct":round((equity/1000-1)*100,4),"win_rate_pct":round(wins/trades*100,2) if trades else None,"max_drawdown_pct":round(worst,4),"capital":1000,"allocation_pct":10,"warnings":["OHLC_REPLAY_ONLY","STOP_FIRST_ON_INTRABAR_AMBIGUITY","SIMULATED_NOT_REAL_FILLS","NO_ORDERBOOK_REPLAY"]}
+
+async def market_positioning(symbol):
+    """Public context only; account ratios measure holders, not position notional."""
+    if not symbol.isalnum() or not symbol.endswith("USDT"):raise ValueError("Invalid symbol")
+    result={"symbol":symbol,"open_interest":None,"long_short_ratio":None,"errors":[]}
+    async with httpx.AsyncClient(timeout=12) as client:
+        for field,endpoint,params in (
+            ("open_interest","/v5/market/open-interest",{"category":"linear","symbol":symbol,"intervalTime":"5min","limit":2}),
+            ("long_short_ratio","/v5/market/account-ratio",{"category":"linear","symbol":symbol,"period":"5min","limit":2}),
+        ):
+            try:
+                resp=await client.get(BASE+endpoint,params=params);resp.raise_for_status()
+                data=resp.json()
+                if data.get("retCode")!=0:raise ValueError("market data rejected")
+                result[field]=(data.get("result",{}).get("list") or [])[:2]
+            except (httpx.HTTPError,ValueError,KeyError,TypeError) as e:
+                result["errors"].append(field+":"+type(e).__name__)
+    return result
