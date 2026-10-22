@@ -14,7 +14,7 @@ from .ai import ShadowAgents
 from .news import NewsMonitor
 import websockets
 import httpx
-from .discovery import fetch_candidates
+from .discovery import fetch_candidates, is_meme
 from .core import Book, SYMBOLS
 from .futures import FuturesPaperEngine, FuturesPosition
 from .performance import report as performance_report
@@ -223,8 +223,9 @@ async def radar_stream():
     while True:
         try:
             async with httpx.AsyncClient() as client:
-                candidates=await fetch_candidates(client,top_n=20)
+                candidates=await fetch_candidates(client,top_n=50,min_turnover=500_000,max_spread_bps=25,radar_mode=True,meme_slots=15)
             symbols=[c.symbol for c in candidates]
+            radar.set_watchlist(symbols)
             if not symbols:raise RuntimeError("No radar instruments")
             async with websockets.connect("wss://stream.bybit.com/v5/public/linear",
                                           ping_interval=20,ping_timeout=15,max_size=2**22) as ws:
@@ -328,7 +329,9 @@ def ai_status(x_admin_token: str | None=Header(default=None)):
 @app.get("/radar/status")
 def radar_status(x_admin_token: str | None=Header(default=None)):
     secure(x_admin_token)
-    return radar.status()
+    state=radar.status()
+    state['meme_watchlist']=[symbol for symbol in radar.watchlist if is_meme(symbol)]
+    return state
 
 @app.get("/news/status")
 def news_status(x_admin_token: str | None=Header(default=None)):
