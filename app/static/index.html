@@ -176,6 +176,7 @@ $('newPaperSession').onclick=async()=>{
 $('historySearch').onclick=()=>loadHistory(true);
 $('historyMore').onclick=()=>loadHistory(false);
 async function fetchJSON(path,signal){const headers=fallbackAdminToken?{'X-Admin-Token':fallbackAdminToken}:{};const r=await fetch(path,{credentials:'same-origin',headers,cache:'no-store',signal});if(!r.ok)throw Error('API '+r.status+' · '+path);return r.json()}
+let lastPositioningFetch=0,lastHistoricalFetch=0;
 async function refresh(){
  if(!token||busy)return;busy=true;const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
  try{
@@ -219,7 +220,8 @@ async function refresh(){
  $('benchmarkSelection').textContent=benchmarkData.selected_candidate?'Research candidate: '+benchmarkData.selected_candidate.symbol+' / '+benchmarkData.selected_candidate.strategy+' (requires out-of-sample validation)':'No strategy qualified for promotion. Minimum 50 nonoverlapping observations per symbol and strategy.';
  $('benchmarkNote').textContent=benchmarkData.limitations;
  $('benchmarkRows').innerHTML=Object.entries(benchmarkData.results||{}).map(([name,v])=>row(escapeHTML(name),escapeHTML(v.samples),escapeHTML(v.net_pct)+'%',escapeHTML(v.hold_same_windows_net_pct)+'%',escapeHTML(v.max_closed_observation_drawdown_pct)+'%')).join('')||'<tr><td>No measured windows yet</td></tr>';
- if(activeTab==='lab'){
+ if(activeTab==='lab' && Date.now()-lastPositioningFetch>300000){
+  lastPositioningFetch=Date.now();
   Promise.all(['BTCUSDT','ETHUSDT','SOLUSDT'].map(sym=>fetchJSON('/research/positioning?symbol='+sym))).then(rows=>{
     $('positioningRows').innerHTML=rows.map(v=>{
       const oi=v.open_interest?.[0]?.openInterest;
@@ -228,7 +230,8 @@ async function refresh(){
     }).join('');
   }).catch(err=>{$('positioningInfo').textContent='Positioning data unavailable: '+err.message;});
  }
- if(activeTab==='lab'){
+ if(activeTab==='lab' && Date.now()-lastHistoricalFetch>60000){
+  lastHistoricalFetch=Date.now();
   Promise.all(['BTCUSDT','ETHUSDT','SOLUSDT'].map(sym=>fetchJSON('/research/backtest?symbol='+sym))).then(items=>{
    $('historicalRows').innerHTML=items.map(v=>row(escapeHTML(v.symbol),escapeHTML(v.trades),escapeHTML(v.net_pct)+'%',v.win_rate_pct==null?'N/A':escapeHTML(v.win_rate_pct)+'%',escapeHTML(v.max_drawdown_pct)+'%')).join('');
   }).catch(err=>{$('historicalInfo').textContent='Historical replay unavailable: '+err.message;});
