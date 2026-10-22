@@ -76,7 +76,7 @@ html,body{max-width:100%;overflow-x:hidden}
 </div><div class="grid tabpanel" data-panel="history"><section class="panel wide"><div class="panelbar"><h2>◷ Historical events</h2><span class="muted">SQLite archive · across restarts</span></div><div class="historyfilters"><select id="historyKind" aria-label="Event type"><option value="">All events</option><option value="trade">Trades</option><option value="decision">Decisions</option><option value="shadow_review">AI reviews</option><option value="radar_alert">Radar alerts</option></select><input id="historySymbol" placeholder="Symbol e.g. BTCUSDT" aria-label="Filter symbol"><input id="historyFrom" type="date" aria-label="From date"><input id="historyTo" type="date" aria-label="To date"><button id="historySearch">Search</button><button id="historyMore">Load older</button></div><div id="historyStatus" class="muted">Choose History to load saved events.</div><div id="historyRows" class="scroll"></div></section></div></main></div>
 <script>
 'use strict';
-let token='',busy=false,mode='simple',lastSignature='',lastChange=0,lastSuccess=0,connected=false,activeTab='overview',historyCursor=null,historyLoaded=false;
+let token='',fallbackAdminToken='',busy=false,mode='simple',lastSignature='',lastChange=0,lastSuccess=0,connected=false,activeTab='overview',historyCursor=null,historyLoaded=false;
 const POLL_MS=2000,$=id=>document.getElementById(id);
 const escapeHTML=v=>String(v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
 const money=n=>n==null?'—':Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -175,7 +175,7 @@ $('newPaperSession').onclick=async()=>{
 };
 $('historySearch').onclick=()=>loadHistory(true);
 $('historyMore').onclick=()=>loadHistory(false);
-async function fetchJSON(path,signal){const r=await fetch(path,{credentials:'same-origin',cache:'no-store',signal});if(!r.ok)throw Error('API '+r.status+' · '+path);return r.json()}
+async function fetchJSON(path,signal){const headers=fallbackAdminToken?{'X-Admin-Token':fallbackAdminToken}:{};const r=await fetch(path,{credentials:'same-origin',headers,cache:'no-store',signal});if(!r.ok)throw Error('API '+r.status+' · '+path);return r.json()}
 async function refresh(){
  if(!token||busy)return;busy=true;const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
  try{
@@ -228,7 +228,7 @@ async function refresh(){
  finally{clearTimeout(timer);busy=false}
 }
 function loggedIn(ok){
- token=ok?'session':'';
+ token=ok?'session':'';if(!ok)fallbackAdminToken='';
  $('token').style.display=ok?'none':'';
  $('connect').style.display=ok?'none':'';
  for(const id of ['logout','pauseBot','runBot','stopBot','startBot'])$(id).style.display=ok?'inline-block':'none';
@@ -236,7 +236,7 @@ function loggedIn(ok){
 async function control(action){
  if(!token)return;
  try{
- const r=await fetch('/control/'+action,{method:'POST',credentials:'same-origin'});
+ const r=await fetch('/control/'+action,{method:'POST',credentials:'same-origin',headers:{'X-Scalper-CSRF':'1',...(fallbackAdminToken?{'X-Admin-Token':fallbackAdminToken}:{})}});
  if(!r.ok)throw Error('Control API '+r.status);
  await refresh();
  }catch(err){$('notice').textContent=err.message}
@@ -251,11 +251,13 @@ $('connect').onclick=async()=>{
  if(!value)return;
  try{
  const r=await fetch('/auth/login',{method:'POST',credentials:'same-origin',headers:{'X-Admin-Token':value,'X-Scalper-CSRF':'1'}});
- if(!r.ok)throw Error('Invalid admin token or login unavailable');
+ if(!r.ok)throw Error('Login HTTP '+r.status+' (check ADMIN_TOKEN and Coolify deployment)');
+ const probe=await fetch('/auth/session',{credentials:'same-origin',cache:'no-store'});
+ if(!probe.ok){fallbackAdminToken=value;$('notice').textContent='Secure browser cookie unavailable. Connected for this tab only; token is not saved.';}
  $('token').value='';
  loggedIn(true);lastSignature='';historyLoaded=false;refresh();
  if(activeTab==='history')loadHistory(true);
- }catch(err){$('notice').textContent=err.message}
+ }catch(err){$('notice').textContent='Connection error: '+err.message; $('liveStatus').textContent='Authentication failed';}
 };
 fetch('/auth/session',{credentials:'same-origin',cache:'no-store'}).then(r=>{if(r.ok){loggedIn(true);refresh();}}).catch(()=>{});
 
