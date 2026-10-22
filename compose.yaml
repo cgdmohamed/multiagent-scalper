@@ -1,0 +1,22 @@
+services:
+  scalper:
+    build: .
+    restart: unless-stopped
+    environment:
+      DB_PATH: /data/events.sqlite3
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?Set a strong ADMIN_TOKEN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      AI_MAX_REVIEWS_PER_RUN: ${AI_MAX_REVIEWS_PER_RUN:-20}
+    volumes:
+      - scalper_data:/data
+    # Bound to localhost ONLY. Do not expose via public reverse proxy.
+    ports:
+      - '127.0.0.1:8800:8000'
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=4)"]
+      interval: 30s
+      timeout: 6s
+      retries: 3
+volumes:
+  scalper_data:
