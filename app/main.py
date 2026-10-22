@@ -82,7 +82,12 @@ async def market_stream():
             async with httpx.AsyncClient() as candle_client:
                 await prime_candles(candle_client, watched)
             async with websockets.connect(url, ping_interval=20, ping_timeout=15, max_size=2**22) as ws:
-                await ws.send(json.dumps({"op":"subscribe","args":[topic for symbol in watched for topic in (f"orderbook.50.{symbol}", f"kline.1.{symbol}", f"kline.3.{symbol}")]}))
+                # Bybit Spot permits at most 10 args PER subscription request.
+                topics = [topic for symbol in watched for topic in
+                          (f"orderbook.50.{symbol}", f"kline.1.{symbol}", f"kline.3.{symbol}")]
+                for index in range(0, len(topics), 10):
+                    await ws.send(json.dumps({"op":"subscribe", "req_id":f"scalper-{index//10}",
+                                              "args":topics[index:index+10]}))
                 engine.feed_connected = True
                 engine.last_error = None
                 logger.info("Bybit spot candidates: %s", watched)
@@ -94,6 +99,11 @@ async def market_stream():
                     except asyncio.TimeoutError:
                         continue
                     event = json.loads(raw)
+                    if event.get("op") == "subscribe":
+                        if event.get("success") is False:
+                            raise RuntimeError(f"Bybit subscription rejected: {event.get('ret_msg')}")
+                        logger.info("Bybit subscription acknowledgement: %s", event.get("req_id"))
+                        continue
                     topic = event.get("topic", "")
                     if topic.startswith("kline."):
                         symbol = topic.rsplit(".", 1)[-1]
