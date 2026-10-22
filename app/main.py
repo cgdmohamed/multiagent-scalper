@@ -25,6 +25,7 @@ from .radar import OpportunityRadar
 from .reconciliation import analyze as analyze_legacy
 from .strategy_lab import StrategyLab
 from .benchmark import compare as compare_benchmarks
+from .historical_research import download as download_history, load as load_history, replay as replay_history, market_positioning
 from .research_indicators import ResearchIndicators
 
 logger = logging.getLogger(__name__)
@@ -600,6 +601,28 @@ def start_fresh_paper_session(confirmation: str, x_admin_token: str | None=Heade
     PORTFOLIO_RECOVERY="NEW_PAPER_SESSION"
     return {"status":"NEW_PAPER_SESSION_STARTED","starting_cash":engine.cfg.initial_cash,
             "legacy_history_preserved":True,"execution_mode":"PAPER_ONLY"}
+
+
+@app.post("/research/history/load")
+async def research_history_load(symbol: str="BTCUSDT", interval: str="1", days: int=7, x_admin_token: str | None=Header(default=None)):
+    secure(x_admin_token)
+    if not engine.research_only:raise HTTPException(409,"History research requires RESEARCH_ONLY")
+    return await download_history(DB_PATH,symbol.upper(),interval,days)
+
+
+@app.get("/research/backtest")
+def research_backtest(symbol: str="BTCUSDT",interval: str="1",x_admin_token: str | None=Header(default=None)):
+    secure(x_admin_token)
+    if not symbol.isalnum() or not symbol.endswith("USDT") or interval not in ("1","3","5"):raise HTTPException(400,"Invalid symbol/interval")
+    result=replay_history(load_history(DB_PATH,symbol.upper(),interval))
+    result.update({"symbol":symbol.upper(),"interval":interval,"mode":"RESEARCH_ONLY","strategy":"CANDLE_MOMENTUM_PROTOTYPE"})
+    return result
+
+
+@app.get("/research/positioning")
+async def research_positioning(symbol: str="BTCUSDT",x_admin_token: str | None=Header(default=None)):
+    secure(x_admin_token)
+    return await market_positioning(symbol.upper())
 
 
 @app.get("/benchmark")
