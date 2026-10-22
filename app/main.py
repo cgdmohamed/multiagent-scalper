@@ -197,7 +197,7 @@ async def prime_candles(client, symbols):
     async def load(symbol, interval):
         resp = await client.get(
             "https://api.bybit.com/v5/market/kline",
-            params={"category":"linear","symbol":symbol,"interval":interval,"limit":20},
+            params={"category":"linear","symbol":symbol,"interval":interval,"limit":120 if interval=="1" else 20},
             timeout=12.0,
         )
         resp.raise_for_status()
