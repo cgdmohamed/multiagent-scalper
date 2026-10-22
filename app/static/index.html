@@ -237,7 +237,7 @@ async function refresh(){
   }).catch(err=>{$('historicalInfo').textContent='Historical replay unavailable: '+err.message;});
  }
  $('labStats').innerHTML=Object.entries(labData.strategies||{}).map(([name,v])=>row(escapeHTML(name),escapeHTML(v.signals),escapeHTML(v.observed_15m),v.avg_15m_net_bps==null?'Pending':escapeHTML(v.avg_15m_net_bps),v.positive_15m_pct==null?'Pending':escapeHTML(v.positive_15m_pct)+'%')).join('');
- $('labSignals').innerHTML=(labData.latest||[]).map(v=>row(escapeHTML(v.timestamp),escapeHTML(v.symbol),escapeHTML(v.strategy),escapeHTML(v.direction),escapeHTML(v.regime),v.returns?.['15m']==null?'Pending':escapeHTML(v.returns['15m']))).join('');
+ $('labSignals').innerHTML=(labData.latest||[]).map(v=>row(escapeHTML(v.timestamp),escapeHTML(v.symbol),escapeHTML(v.strategy),escapeHTML(v.direction),escapeHTML(v.regime),v.returns?.['15m']==null?(v.measurement_status==='EXPIRED_NO_FRESH_QUOTE'?'No fresh quote':'Pending'):escapeHTML(v.returns['15m']))).join('');
  $('pairs').innerHTML=(s.ranked_pairs||[]).map(p=>row('<span class="symbol">'+escapeHTML(p.symbol)+'</span>',num(p.score),num(p.spread_bps),money(p.turnover24h))).join('');
  renderDecisions(d);
  $('trades').innerHTML=t.length?t.slice(0,35).map(v=>row(badge(v.event+' '+(v.direction||''),v.event==='OPEN'?'hold':v.pnl>=0?'approve':'veto'),'<span class="symbol">'+escapeHTML(v.symbol)+'</span>','<span class="price">'+precise(v.price)+'</span>','<span class="'+cls(v.pnl||0)+'">'+signed(v.pnl)+'</span>')).join(''):row('<span class="muted">No paper trades</span>','','','');
