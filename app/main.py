@@ -355,9 +355,24 @@ def persist_bot_stopped(stopped):
         db.execute("INSERT INTO operator_settings(name,value) VALUES ('stopped',?) ON CONFLICT(name) DO UPDATE SET value=excluded.value",("1" if stopped else "0",))
 
 
+async def historical_research_worker():
+    """Refresh a small bounded research universe without operator intervention."""
+    while True:
+        for symbol in ("BTCUSDT","ETHUSDT","SOLUSDT"):
+            if BOT_STOPPED: return
+            try:
+                await download_history(DB_PATH,symbol,"1",3)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("Historical research download %s failed: %s",symbol,type(exc).__name__)
+            await asyncio.sleep(2)
+        await asyncio.sleep(6*3600)
+
+
 def launch_bot_tasks():
     if BOT_STOPPED:return
-    for name,fn in (("market",market_stream),("news",news.loop),("radar",radar_stream)):
+    for name,fn in (("market",market_stream),("news",news.loop),("radar",radar_stream),("history",historical_research_worker)):
         if name not in BOT_TASKS or BOT_TASKS[name].done():
             BOT_TASKS[name]=asyncio.create_task(fn())
 
