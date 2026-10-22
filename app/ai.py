@@ -22,7 +22,7 @@ def validate_vote(v):
 class ShadowAgents:
     def __init__(self, key=None, model=None, max_reviews=10, news_monitor=None):
         self.key=key or os.getenv('OPENAI_API_KEY','')
-        self.model=model or os.getenv('OPENAI_MODEL','gpt-4.1-mini')
+        self.model=model or os.getenv('OPENAI_MODEL','gpt-5.6-terra')
         self.sem=asyncio.Semaphore(1)
         self.pending=set()
         self.max_reviews=max_reviews
@@ -33,7 +33,7 @@ class ShadowAgents:
     def enabled(self): return bool(self.key)
 
     async def _vote(self, client, role, snapshot):
-        body={'model':self.model, 'temperature':0, 'response_format':{'type':'json_object'},
+        body={'model':self.model, 'reasoning_effort':'low', 'response_format':{'type':'json_object'},
               'messages':[{'role':'system','content':f'{ROLES[role]} Return only JSON with action (BUY/HOLD/VETO/ABSTAIN) and reason. No financial guarantees.'},
                           {'role':'user','content':json.dumps(snapshot,sort_keys=True)}]}
         r=await client.post('https://api.openai.com/v1/chat/completions',json=body,
