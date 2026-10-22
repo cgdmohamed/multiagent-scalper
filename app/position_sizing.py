@@ -6,7 +6,7 @@ def size_position(*,equity,cash,entry,stop,qty_step,min_notional,risk_fraction,
                   available_depth_notional=None,depth_fraction=0.01):
     values=(equity,cash,entry,stop,qty_step,min_notional,risk_fraction,fee_bps,
             slippage_bps,allocation_fraction,total_free_notional)
-    if not all(math.isfinite(v) for v in values) or min(equity,cash,entry,stop,qty_step)>0 is False:
+    if not all(math.isfinite(v) for v in values) or min(equity,cash,entry,stop,qty_step)<=0:
         return {"allowed":False,"reason":"INVALID_SIZING_INPUT"}
     if any(v<0 for v in (min_notional,risk_fraction,fee_bps,slippage_bps,allocation_fraction,total_free_notional)):
         return {"allowed":False,"reason":"INVALID_SIZING_LIMIT"}
