@@ -27,6 +27,8 @@ from .strategy_lab import StrategyLab
 from .benchmark import compare as compare_benchmarks
 from .historical_research import download as download_history, load as load_history, replay as replay_history, market_positioning
 from .research_indicators import ResearchIndicators
+from .capital_guardian import inspect as guardian_inspect,configure_engine
+from .strategy_optimizer import evaluate as evaluate_candidates
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -39,6 +41,7 @@ radar = OpportunityRadar()
 lab = StrategyLab()
 indicators = ResearchIndicators()
 engine.research_only = True
+configure_engine(engine)
 SESSION_STARTED_AT = time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime())
 PORTFOLIO_RECOVERY = "FRESH_NO_HISTORY"
 
@@ -514,6 +517,8 @@ def status(x_admin_token: str | None=Header(default=None)):
     secure(x_admin_token)
     current=engine.status()
     current["research_only"]=engine.research_only
+    current["capital_guardian"]=guardian_inspect(engine)
+    current["strategy_selection"]="RESEARCH_ONLY_NO_EXECUTION"
     current["bot_state"]="STOPPED" if BOT_STOPPED else "PAUSED" if MANUALLY_PAUSED else "RISK_HALTED" if engine.halted else "RUNNING"
     current["operator_paused"]=MANUALLY_PAUSED
     current["bot_stopped"]=BOT_STOPPED
@@ -639,6 +644,11 @@ async def research_positioning(symbol: str="BTCUSDT",x_admin_token: str | None=H
     secure(x_admin_token)
     return await market_positioning(symbol.upper())
 
+
+@app.get("/research/optimizer")
+def strategy_optimizer_status(x_admin_token: str | None=Header(default=None)):
+    secure(x_admin_token)
+    return evaluate_candidates(list(lab.samples))
 
 @app.get("/benchmark")
 def benchmark_status(x_admin_token: str | None=Header(default=None)):
