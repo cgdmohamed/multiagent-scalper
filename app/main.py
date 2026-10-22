@@ -496,13 +496,23 @@ def pause_new_entries(x_admin_token: str | None=Header(default=None)):
 
 
 @app.post("/control/run")
-def resume_new_entries(x_admin_token: str | None=Header(default=None)):
-    global MANUALLY_PAUSED
+async def resume_research(x_admin_token: str | None=Header(default=None)):
+    """Run the research workers; never release the portfolio risk circuit breaker."""
+    global MANUALLY_PAUSED, BOT_STOPPED
     secure(x_admin_token)
-    save_operator_pause(False)
-    MANUALLY_PAUSED=False
-    engine.operator_paused=BOT_STOPPED
-    return {"operator_paused":False,"risk_halted":engine.halted,"note":"Risk circuit breaker is never overridden"}
+    async with BOT_LOCK:
+        # A Run request after Stop should work as users expect, in research mode.
+        BOT_STOPPED=False
+        persist_bot_stopped(False)
+        save_operator_pause(False)
+        MANUALLY_PAUSED=False
+        engine.operator_paused=False
+        launch_bot_tasks()
+        persist("operator_control",{"action":"RUN_RESEARCH","research_only":engine.research_only})
+        return {"monitoring_requested":True,"operator_paused":False,
+                "risk_halted":engine.halted,"research_only":engine.research_only,
+                "feed_connected":engine.feed_connected,
+                "note":"Research workers requested; feed may still be connecting. No risk protection bypassed."}
 
 
 
@@ -521,7 +531,9 @@ def status(x_admin_token: str | None=Header(default=None)):
     current["research_only"]=engine.research_only
     current["capital_guardian"]=guardian_inspect(engine)
     current["strategy_selection"]="RESEARCH_ONLY_NO_EXECUTION"
-    current["bot_state"]="STOPPED" if BOT_STOPPED else "PAUSED" if MANUALLY_PAUSED else "RISK_HALTED" if engine.halted else "RUNNING"
+    market_task=BOT_TASKS.get("market")
+    current["monitoring_state"]="STOPPED" if BOT_STOPPED else "CONNECTING_OR_FAILED" if not market_task or market_task.done() or not engine.feed_connected else "CONNECTED"
+    current["bot_state"]="STOPPED" if BOT_STOPPED else "PAUSED" if MANUALLY_PAUSED else "RESEARCH_RUNNING" if engine.research_only else "RISK_HALTED" if engine.halted else "RUNNING"
     current["operator_paused"]=MANUALLY_PAUSED
     current["bot_stopped"]=BOT_STOPPED
     current["background_tasks"]={name:not task.done() for name,task in BOT_TASKS.items()}
