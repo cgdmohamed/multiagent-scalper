@@ -85,7 +85,7 @@ def restore_operator_pause():
             MANUALLY_PAUSED=bool(row and row[0]=="1")
             stopped=db.execute("SELECT value FROM operator_settings WHERE name='stopped'").fetchone()
             BOT_STOPPED=bool(stopped and stopped[0]=="1")
-    engine.operator_paused=MANUALLY_PAUSED
+    engine.operator_paused=MANUALLY_PAUSED or BOT_STOPPED
 
 
 def persist(kind, payload):
@@ -103,6 +103,7 @@ def save_trade_batch(trades):
         "peak_equity": engine.peak_equity, "day": engine.day,
         "day_start_equity": engine.day_start_equity, "halted": engine.halted,
         "order_seen": list(engine.order_manager.seen),
+        "last_stops":engine.last_stops,"session_closes":list(engine.session_closes),"performance_halted":engine.performance_halted,
     }
     with sqlite3.connect(DB_PATH) as db:
         db.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, logged_at TEXT DEFAULT CURRENT_TIMESTAMP, payload TEXT)")
@@ -139,6 +140,11 @@ def restore_portfolio():
             engine.day_start_equity=float(data["day_start_equity"])
             engine.halted=bool(data["halted"])
             engine.order_manager.seen=set(data.get("order_seen",[]))
+            engine.last_stops={k:int(v) for k,v in data.get("last_stops",{}).items()}
+            from collections import deque
+            engine.session_closes=deque(data.get("session_closes",[]),maxlen=200)
+            engine.performance_halted=bool(data.get("performance_halted",False))
+            engine.halted=engine.halted or engine.performance_halted
             rows=db.execute("SELECT payload FROM events WHERE kind='trade' ORDER BY id DESC LIMIT 500").fetchall()
             from collections import deque
             engine.trades=deque((json.loads(t[0]) for t in rows),maxlen=500)
@@ -452,6 +458,7 @@ def health(): return {"ok":True,"mode":"FUTURES_PAPER_ONLY","feed_connected":eng
 def status(x_admin_token: str | None=Header(default=None)):
     secure(x_admin_token)
     current=engine.status()
+    current["bot_state"]="STOPPED" if BOT_STOPPED else "PAUSED" if MANUALLY_PAUSED else "RISK_HALTED" if engine.halted else "RUNNING"
     current["operator_paused"]=MANUALLY_PAUSED
     current["bot_stopped"]=BOT_STOPPED
     current["background_tasks"]={name:not task.done() for name,task in BOT_TASKS.items()}
@@ -546,6 +553,9 @@ def start_fresh_paper_session(confirmation: str, x_admin_token: str | None=Heade
     engine.day=None
     engine.day_start_equity=engine.cfg.initial_cash
     engine.halted=False
+    engine.performance_halted=False
+    engine.session_closes.clear()
+    engine.last_stops.clear()
     engine.last_error=None
     PORTFOLIO_RECOVERY="NEW_PAPER_SESSION"
     return {"status":"NEW_PAPER_SESSION_STARTED","starting_cash":engine.cfg.initial_cash,
