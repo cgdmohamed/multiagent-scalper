@@ -9,6 +9,14 @@ class OpportunityRadar:
         self.last_alert={}
         self.tracked={}
         self.count=0
+        self.watchlist=[]
+
+    def set_watchlist(self,symbols):
+        self.watchlist=list(symbols)
+        active=set(symbols)
+        for symbol in list(self.tape):
+            if symbol not in active:
+                del self.tape[symbol]
 
     def ingest(self, symbol, trades):
         tape=self.tape[symbol]
@@ -62,7 +70,7 @@ class OpportunityRadar:
             if len(alert["observations"])==3:alert["status"]="COMPLETE"
 
     def status(self):
-        return {"mode":"OBSERVE_ONLY","watched_symbols":len(self.tape),
+        return {"mode":"OBSERVE_ONLY","watched_symbols":len(self.watchlist),"watchlist":list(self.watchlist),
                 "total_alerts_this_run":self.count,"alerts":list(self.alerts)[:40],
                 "criteria":"15s move >=0.30%; relative traded notional >=3x previous 60s rate; direction-aligned aggressive flow >=68%; 60s cooldown. Research thresholds, not validated signals.",
                 "limitations":"Public trades only, no whale identity attribution; no liquidation or orderbook wall confirmation; 5m observation requires a later price update."}
