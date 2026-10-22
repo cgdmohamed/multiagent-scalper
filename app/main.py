@@ -19,6 +19,7 @@ from .core import Book, SYMBOLS
 from .futures import FuturesPaperEngine, FuturesPosition
 from .performance import report as performance_report, cooldown_study, account_audit
 from .radar import OpportunityRadar
+from .reconciliation import analyze as analyze_legacy
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -84,7 +85,7 @@ def restore_portfolio():
             if not isinstance(data["cash"],(int,float)) or data["cash"]<0:
                 raise ValueError("invalid saved cash")
             engine.cash=float(data["cash"])
-            PORTFOLIO_RECOVERY="CHECKPOINT_RESTORED"
+            PORTFOLIO_RECOVERY="NEW_PAPER_SESSION_RESTORED" if data.get("new_session") else "CHECKPOINT_RESTORED"
             engine.positions=positions
             engine.peak_equity=float(data["peak_equity"])
             engine.day=data["day"]
@@ -343,12 +344,60 @@ def cooldown_analysis(x_admin_token: str | None=Header(default=None)):
     return cooldown_study(load_historical_trades())
 
 
+@app.get("/reconciliation")
+def reconciliation(x_admin_token: str | None=Header(default=None)):
+    secure(x_admin_token)
+    result=analyze_legacy(load_historical_trades())
+    result["recovery_status"]=PORTFOLIO_RECOVERY
+    result["trading_halted"]=engine.halted
+    return result
+
+
+@app.post("/paper/new-session")
+def start_fresh_paper_session(confirmation: str, x_admin_token: str | None=Header(default=None)):
+    """Explicit operator choice; never infer an account balance from legacy events."""
+    global PORTFOLIO_RECOVERY
+    secure(x_admin_token)
+    if confirmation != "START_NEW_PAPER_SESSION_KEEP_HISTORY":
+        raise HTTPException(400,"Exact acknowledgement required")
+    if PORTFOLIO_RECOVERY not in ("UNRECONCILED_LEGACY_HISTORY","CHECKPOINT_INVALID"):
+        raise HTTPException(409,"New session is only permitted for an unreconciled or invalid legacy wallet")
+    if engine.positions:
+        raise HTTPException(409,"Positions are still tracked; cannot start a fresh paper session")
+    if not engine.halted:
+        raise HTTPException(409,"Engine must be halted before creating a new paper session")
+    state={"cash":engine.cfg.initial_cash,"positions":{},"peak_equity":engine.cfg.initial_cash,
+           "day":None,"day_start_equity":engine.cfg.initial_cash,"halted":False,
+           "order_seen":[],"new_session":True}
+    DB_PATH.parent.mkdir(parents=True,exist_ok=True)
+    with sqlite3.connect(DB_PATH) as db:
+        db.execute("BEGIN IMMEDIATE")
+        db.execute("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, logged_at TEXT DEFAULT CURRENT_TIMESTAMP, payload TEXT)")
+        existing=db.execute("SELECT 1 FROM events WHERE kind='paper_session_start' LIMIT 1").fetchone()
+        if existing:
+            raise HTTPException(409,"A fresh session has already been created; inspect checkpoints")
+        db.execute("INSERT INTO events (kind,payload) VALUES (?,?)",("paper_session_start",json.dumps({"mode":"PAPER_ONLY","legacy_history_preserved":True,"initial_cash":engine.cfg.initial_cash})))
+        db.execute("INSERT INTO events (kind,payload) VALUES (?,?)",("engine_state",json.dumps(state)))
+    engine.cash=engine.cfg.initial_cash
+    engine.positions.clear()
+    engine.trades.clear()
+    engine.order_manager.seen.clear()
+    engine.peak_equity=engine.cfg.initial_cash
+    engine.day=None
+    engine.day_start_equity=engine.cfg.initial_cash
+    engine.halted=False
+    engine.last_error=None
+    PORTFOLIO_RECOVERY="NEW_PAPER_SESSION"
+    return {"status":"NEW_PAPER_SESSION_STARTED","starting_cash":engine.cfg.initial_cash,
+            "legacy_history_preserved":True,"execution_mode":"PAPER_ONLY"}
+
+
 @app.get("/events")
 def events(x_admin_token: str | None=Header(default=None), limit:int=50,
            before_id:int | None=None, kind:str | None=None,
            symbol:str | None=None, date_from:str | None=None, date_to:str | None=None):
     secure(x_admin_token)
-    allowed={"trade","decision","shadow_review","radar_alert","engine_state"}
+    allowed={"trade","decision","shadow_review","radar_alert","engine_state","paper_session_start"}
     if kind and kind not in allowed: raise HTTPException(400,"Invalid event kind")
     if before_id is not None and before_id<1: raise HTTPException(400,"Invalid cursor")
     if symbol and (len(symbol)>32 or not symbol.isalnum()): raise HTTPException(400,"Invalid symbol")
