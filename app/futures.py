@@ -1,6 +1,7 @@
 """USDT linear perpetual PAPER simulator. No private exchange endpoints."""
 from dataclasses import dataclass, asdict
 from collections import deque
+import time
 import math
 import uuid
 from .core import PaperEngine, Settings, AgentOpinion, Decision, utcnow
@@ -124,7 +125,14 @@ class FuturesPaperEngine(PaperEngine):
             exit_price=price*(1-self.cfg.slippage_bps_per_side/10000 if p.direction=="LONG" else 1+self.cfg.slippage_bps_per_side/10000)
             gross=((exit_price-p.entry) if p.direction=="LONG" else (p.entry-exit_price))*p.qty
             estimated_exit_fee=exit_price*p.qty*self.cfg.taker_fee_bps/10000
-            out[symbol]={"mark_price":price,"estimated_exit_price":exit_price,
+            position_progress=max(0.,min(100.,(exit_price-p.stop)/(p.target-p.stop)*100)) if p.direction=="LONG" else max(0.,min(100.,(p.stop-exit_price)/(p.stop-p.target)*100))
+            age_ms=max(0,int(time.time()*1000)-(book.received_ms if book else 0)) if book else None
+            fresh=bool(book and self.feed_connected and age_ms<=5000)
+            out[symbol]={"price_fresh":fresh,"price_age_ms":age_ms,"last_price":price if fresh else None,
+                         "stop_target_progress_pct":round(position_progress,2) if fresh else None,
+                         "distance_to_stop_pct":round(abs(exit_price-p.stop)/p.entry*100,3) if fresh else None,
+                         "distance_to_target_pct":round(abs(p.target-exit_price)/p.entry*100,3) if fresh else None,
+                         "mark_price":price,"estimated_exit_price":exit_price,
                          "unrealized_pnl":gross-p.entry_fee-estimated_exit_fee,
                          "gross_unrealized_pnl":gross,"estimated_exit_fee":estimated_exit_fee,
                          "entry_fee":p.entry_fee,
