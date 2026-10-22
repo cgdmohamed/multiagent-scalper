@@ -302,8 +302,11 @@ def trades(x_admin_token: str | None=Header(default=None)):
 @app.get("/performance")
 def performance(x_admin_token: str | None=Header(default=None)):
     secure(x_admin_token)
+    if not DB_PATH.exists():
+        return performance_report([])
     with sqlite3.connect(DB_PATH) as db:
-        rows=db.execute("SELECT payload FROM events WHERE kind='trade' ORDER BY id").fetchall() if DB_PATH.exists() else []
+        has_table=db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='events'").fetchone()
+        rows=db.execute("SELECT payload FROM events WHERE kind='trade' ORDER BY id").fetchall() if has_table else []
     return performance_report([json.loads(r[0]) for r in rows])
 
 @app.get("/events")
