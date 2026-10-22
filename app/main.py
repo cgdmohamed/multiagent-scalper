@@ -30,6 +30,7 @@ from .research_indicators import ResearchIndicators
 from .capital_guardian import inspect as guardian_inspect,configure_engine
 from .strategy_optimizer import evaluate as evaluate_candidates
 from .signal_replay import replay_signals
+from .paper_eligibility import eligibility
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -42,6 +43,7 @@ radar = OpportunityRadar()
 lab = StrategyLab()
 indicators = ResearchIndicators()
 engine.research_only = True
+PAPER_STRATEGY_BOUND = False  # Current entry engine is not driven by validated Strategy Lab candidates.
 configure_engine(engine)
 SESSION_STARTED_AT = time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime())
 PORTFOLIO_RECOVERY = "FRESH_NO_HISTORY"
@@ -483,6 +485,48 @@ def browser_logout(response:Response,x_admin_token: str | None=Header(default=No
     return {"authenticated":False}
 
 
+def paper_eligibility_status():
+    benchmark=compare_benchmarks(list(lab.samples))
+    optimizer=evaluate_candidates(list(lab.samples))
+    market_task=BOT_TASKS.get("market")
+    feed_ok=bool(engine.feed_connected and LAST_MARKET_MESSAGE_MS is not None
+                 and int(time.time()*1000)-LAST_MARKET_MESSAGE_MS<15000
+                 and market_task and not market_task.done())
+    return eligibility(
+        feed_ok=feed_ok,bot_stopped=BOT_STOPPED,operator_paused=MANUALLY_PAUSED,
+        risk_halted=engine.halted,capital_allowed=guardian_inspect(engine)["allowed"],
+        recovery_ok=PORTFOLIO_RECOVERY not in ("UNRECONCILED_LEGACY_HISTORY","CHECKPOINT_INVALID"),
+        qualified_benchmark=benchmark.get("selected_candidate"),
+        qualified_optimizer=optimizer.get("qualified",[]),
+        strategy_bound=PAPER_STRATEGY_BOUND)
+
+@app.get("/control/paper-eligibility")
+def paper_eligibility_check(x_admin_token: str | None=Header(default=None)):
+    secure(x_admin_token)
+    return paper_eligibility_status()
+
+@app.post("/control/paper/enable")
+async def enable_paper(x_admin_token: str | None=Header(default=None)):
+    secure(x_admin_token)
+    async with BOT_LOCK:
+        check=paper_eligibility_status()
+        if not check["eligible"]:
+            raise HTTPException(status_code=409,detail={"message":"Paper mode blocked","reasons":check["reasons"]})
+        # Safety: explicit selection and binding is required before releasing
+        # the existing entry engine. Do not silently trade unrelated rules.
+        engine.research_only=False
+        persist("operator_control",{"action":"PAPER_ENABLED","mode":"PAPER_ONLY"})
+        return {"paper_enabled":True,"research_only":False}
+
+@app.post("/control/paper/disable")
+async def disable_paper(x_admin_token: str | None=Header(default=None)):
+    secure(x_admin_token)
+    async with BOT_LOCK:
+        engine.research_only=True
+        persist("operator_control",{"action":"RESEARCH_ONLY_ENABLED","mode":"PAPER_ONLY"})
+        return {"paper_enabled":False,"research_only":True,"open_positions_unaffected":True}
+
+
 @app.post("/control/stop")
 async def fully_stop_bot(x_admin_token: str | None=Header(default=None)):
     global BOT_STOPPED
@@ -557,6 +601,7 @@ def status(x_admin_token: str | None=Header(default=None)):
     current["research_only"]=engine.research_only
     current["capital_guardian"]=guardian_inspect(engine)
     current["strategy_selection"]="RESEARCH_ONLY_NO_EXECUTION"
+    current["paper_eligibility"]=paper_eligibility_status()
     market_task=BOT_TASKS.get("market")
     current["startup"]={"generation":STARTUP_GENERATION,"stage":"STOPPED" if BOT_STOPPED else STARTUP_STAGE,
                          "events":STARTUP_EVENTS[-12:],"last_market_message_ms":LAST_MARKET_MESSAGE_MS}
