@@ -10,9 +10,10 @@ services:
       AI_MAX_REVIEWS_PER_RUN: ${AI_MAX_REVIEWS_PER_RUN:-20}
     volumes:
       - scalper_data:/data
-    # Bound to localhost ONLY. Do not expose via public reverse proxy.
-    ports:
-      - '127.0.0.1:8800:8000'
+    # Coolify reverse proxy connects directly to container port 8000.
+    # Do not publish a host port; protect the dashboard with Cloudflare Access.
+    expose:
+      - '8000'
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=4)"]
       interval: 30s
