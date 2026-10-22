@@ -310,10 +310,28 @@ def performance(x_admin_token: str | None=Header(default=None)):
     return performance_report([json.loads(r[0]) for r in rows])
 
 @app.get("/events")
-def events(x_admin_token: str | None=Header(default=None), limit:int=100):
+def events(x_admin_token: str | None=Header(default=None), limit:int=50,
+           before_id:int | None=None, kind:str | None=None,
+           symbol:str | None=None, date_from:str | None=None, date_to:str | None=None):
     secure(x_admin_token)
+    allowed={"trade","decision","shadow_review","radar_alert","engine_state"}
+    if kind and kind not in allowed: raise HTTPException(400,"Invalid event kind")
+    if before_id is not None and before_id<1: raise HTTPException(400,"Invalid cursor")
+    if symbol and (len(symbol)>32 or not symbol.isalnum()): raise HTTPException(400,"Invalid symbol")
+    for value in (date_from,date_to):
+        if value and (len(value)!=10 or value[4]!='-' or value[7]!='-'):
+            raise HTTPException(400,"Date format must be YYYY-MM-DD")
+    if not DB_PATH.exists():return []
+    conditions=[]; params=[]
+    if kind:conditions.append("kind=?");params.append(kind)
+    if before_id is not None:conditions.append("id<?");params.append(before_id)
+    if date_from:conditions.append("logged_at>=?");params.append(date_from+" 00:00:00")
+    if date_to:conditions.append("logged_at<?");params.append(date_to+" 23:59:59.999")
+    if symbol:conditions.append("json_extract(payload, '$.symbol')=?");params.append(symbol.upper())
+    where=(" WHERE "+" AND ".join(conditions)) if conditions else ""
     with sqlite3.connect(DB_PATH) as db:
-        rows=db.execute("SELECT id,kind,logged_at,payload FROM events ORDER BY id DESC LIMIT ?",(min(max(limit,1),500),)).fetchall()
+        if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='events'").fetchone():return []
+        rows=db.execute("SELECT id,kind,logged_at,payload FROM events"+where+" ORDER BY id DESC LIMIT ?",(*params,min(max(limit,1),100))).fetchall()
     return [{"id":r[0],"kind":r[1],"logged_at":r[2],"payload":json.loads(r[3])} for r in rows]
 
 @app.get("/dashboard", include_in_schema=False)
