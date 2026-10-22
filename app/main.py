@@ -54,7 +54,7 @@ async def market_stream():
             engine.order_manager.allowed_symbols.update(p.symbol for p in ranked)
             watched = sorted(set(p.symbol for p in ranked) | set(engine.positions))
             async with websockets.connect(url, ping_interval=20, ping_timeout=15, max_size=2**22) as ws:
-                await ws.send(json.dumps({"op":"subscribe","args":[f"orderbook.50.{symbol}" for symbol in watched]}))
+                await ws.send(json.dumps({"op":"subscribe","args":[topic for symbol in watched for topic in (f"orderbook.50.{symbol}", f"kline.1.{symbol}", f"kline.3.{symbol}")]}))
                 engine.feed_connected = True
                 engine.last_error = None
                 logger.info("Bybit spot candidates: %s", watched)
@@ -66,7 +66,15 @@ async def market_stream():
                     except asyncio.TimeoutError:
                         continue
                     event = json.loads(raw)
-                    if not event.get("topic", "").startswith("orderbook.50."): continue
+                    topic = event.get("topic", "")
+                    if topic.startswith("kline."):
+                        symbol = topic.rsplit(".", 1)[-1]
+                        if symbol in watched:
+                            for bar in event.get("data", []):
+                                if bar.get("confirm") is True:
+                                    engine.on_candle(symbol, str(bar.get("interval")), int(bar.get("start")), float(bar.get("close")))
+                        continue
+                    if not topic.startswith("orderbook.50."): continue
                     data = event.get("data", {})
                     symbol = data.get("s")
                     if symbol not in watched: continue
