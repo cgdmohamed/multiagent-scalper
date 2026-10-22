@@ -293,7 +293,10 @@ def health(): return {"ok":True,"mode":"FUTURES_PAPER_ONLY","feed_connected":eng
 @app.get("/status")
 def status(x_admin_token: str | None=Header(default=None)):
     secure(x_admin_token)
-    return engine.status()
+    current=engine.status()
+    current["portfolio_recovery"]=PORTFOLIO_RECOVERY
+    current["halt_diagnostic"]="LEGACY_HISTORY_REQUIRES_RECONCILIATION" if PORTFOLIO_RECOVERY=="UNRECONCILED_LEGACY_HISTORY" else "CHECKPOINT_INVALID" if PORTFOLIO_RECOVERY=="CHECKPOINT_INVALID" else "RISK_LIMIT_OR_RESTORED_HALT" if engine.halted else "NONE"
+    return current
 
 @app.get("/decisions")
 def decisions(x_admin_token: str | None=Header(default=None)):
