@@ -8,6 +8,7 @@ class StrategyLab:
         self.pending=[]
         self.last_signal={}
         self.last_quotes={}
+        self.regimes={}
     def observe(self,book,m1,m3):
         now=book.received_ms
         sym=book.symbol
@@ -26,9 +27,11 @@ class StrategyLab:
                     changed.append(item)
             if age>=900000:
                 self.pending.remove(item)
-        if m1 is None or m3 is None or book.spread_bps>5:return changed
+        if m1 is None or m3 is None:return changed
         imbalance=book.imbalance
         regime="TRENDING" if abs(m1)>15 and m1*m3>0 else "CHOPPY" if abs(m1)>10 and m1*m3<=0 else "QUIET" if abs(m1)<8 else "MIXED"
+        self.regimes[sym]={"regime":regime,"at_ms":now,"spread_bps":round(book.spread_bps,3)}
+        if book.spread_bps>5:return changed
         signals={}
         if m1*m3>0 and abs(m1)>12 and abs(imbalance)>.18 and m1*imbalance>0:signals["TREND_SCALP"]="LONG" if m1>0 else "SHORT"
         if abs(m1)>30 and abs(m3)>15 and m1*m3>0 and abs(imbalance)>.12 and m1*imbalance>0:signals["MOMENTUM_BREAKOUT"]="LONG" if m1>0 else "SHORT"
@@ -57,5 +60,5 @@ class StrategyLab:
             stats[name]={"signals":len(rows),"observed_15m":len(measured),
                          "avg_15m_net_bps":round(sum(measured)/len(measured),2) if measured else None,
                          "positive_15m_pct":round(100*sum(x>0 for x in measured)/len(measured),2) if measured else None}
-        return {"mode":"RESEARCH_ONLY","execution":"NONE","price_basis":"mid_quote","note":"Indicative fixed-horizon net returns, not realized fills or stop/target simulations. Orderbook pressure is not executed trade flow. Samples are checkpointed in SQLite when configured.", "strategies":stats,
+        return {"market_regimes":self.regimes,"mode":"RESEARCH_ONLY","execution":"NONE","price_basis":"mid_quote","note":"Indicative fixed-horizon net returns, not realized fills or stop/target simulations. Orderbook pressure is not executed trade flow. Samples are checkpointed in SQLite when configured.", "strategies":stats,
                 "latest":list(self.samples)[:15]}
