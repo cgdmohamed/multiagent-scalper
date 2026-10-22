@@ -186,7 +186,8 @@ async function refresh(){
  $('liveStatus').innerHTML='<span class="dot live"></span> Live · Synced '+new Date(now).toLocaleTimeString()+' · Data changed '+new Date(lastChange).toLocaleTimeString()+' · Every 2 seconds';
  const operating=s.bot_state||'UNKNOWN';
  $('botStateBanner').textContent='BOT '+operating+(s.research_only?' · RESEARCH ONLY: NO NEW ENTRIES':'')+(s.bot_stopped?' · All background workers stopped':s.operator_paused?' · New entries disabled':s.halted?' · Risk / performance protection active':' · Monitoring market');
- $('botStateBanner').style.borderColor=operating==='RUNNING'?'#02c076':operating==='STOPPED'?'#f6465d':'#f0b90b';
+ $('botStateBanner').textContent+=' · FEED '+(s.monitoring_state||'UNKNOWN')+(s.halted?' · ENTRY RISK HALTED':'');
+ $('botStateBanner').style.borderColor=operating==='STOPPED'?'#f6465d':s.feed_connected?'#02c076':'#f0b90b';
  $('notice').textContent=s.bot_stopped?'STOPPED · Background work and new AI reviews disabled.':s.operator_paused?'PAUSED · No new entries; open positions still monitored.':s.halted?('NEW ENTRIES HALTED · '+(s.halt_diagnostic||'RISK_PROTECTION')+' · Paper positions remain monitored.'):s.last_error||'Paper mode active. AI does not control executions.';
  $('equity').textContent=money(s.equity);$('cash').textContent=money(s.cash);$('positions').textContent=Object.keys(s.positions||{}).length;
  const realized=s.realized_pnl??t.filter(x=>x.event==='CLOSE').reduce((sum,x)=>sum+(x.pnl||0),0);
@@ -198,7 +199,7 @@ async function refresh(){
  $('stopBot').style.display=s.bot_stopped?'none':'inline-block';
  $('startBot').style.display=s.bot_stopped?'inline-block':'none';
  $('pauseBot').disabled=controlBusy||!!s.operator_paused||!!s.bot_stopped;
- $('runBot').disabled=controlBusy||!s.operator_paused||!!s.bot_stopped;
+ $('runBot').disabled=controlBusy||(!s.operator_paused&&!s.bot_stopped&&s.monitoring_state==='CONNECTED');
  $('entryProtection').textContent=s.bot_stopped?'STOPPED':s.research_only?'RESEARCH ONLY':s.operator_paused?'PAUSED':s.halted?'HALTED':'ACTIVE';
  $('entryProtection').className='number '+(s.bot_stopped||s.operator_paused||s.halted?'bad':'good');
  const protectionLabels={STOP_COOLDOWN_5M:'Five-minute re-entry cooldown after a stop loss.',PERFORMANCE_CIRCUIT_BREAKER:'Performance limit reached; new entries blocked.',LEGACY_HISTORY_REQUIRES_RECONCILIATION:'Legacy trade history has no trusted wallet checkpoint. Manual reconciliation required.',CHECKPOINT_INVALID:'Saved wallet checkpoint cannot be validated.',RISK_LIMIT_OR_RESTORED_HALT:'Risk limit reached or halt restored from a previous session. Review account audit.',NONE:'New entries permitted only when all strategy and risk gates pass.'};
@@ -298,7 +299,7 @@ async function control(action){
   const result=await r.json().catch(()=>({}));
   if(!r.ok)throw Error(result.detail||'Control API '+r.status);
   const state=await fetchJSON('/status');
-  controlFeedback('Confirmed by server: BOT '+state.bot_state);
+  controlFeedback('Server accepted '+action.toUpperCase()+' · '+state.bot_state+' · feed '+(state.monitoring_state||'UNKNOWN')+(state.halted?' · trade entries risk-halted':''));
   $('stopBot').style.display=state.bot_stopped?'none':'inline-block';
   $('startBot').style.display=state.bot_stopped?'inline-block':'none';
   $('entryProtection').textContent=state.bot_state;
@@ -318,7 +319,7 @@ $('pauseBot').onclick=()=>control('pause');
 $('runBot').onclick=()=>control('run');
 $('stopBot').onclick=()=>{if(confirm('Stop all bot workers? This stops market monitoring, AI, news and radar. Only allowed when no positions are open.'))control('stop')};
 $('startBot').onclick=()=>control('start');
-$('logout').onclick=async()=>{try{await fetch('/auth/logout',{method:'POST',credentials:'same-origin'})}finally{loggedIn(false);$('liveStatus').textContent='Signed out';$('notice').textContent='Enter admin token to reconnect';}};
+$('logout').onclick=async()=>{try{await fetch('/auth/logout',{method:'POST',credentials:'same-origin',headers:{'X-Scalper-CSRF':'1',...(fallbackAdminToken?{'X-Admin-Token':fallbackAdminToken}:{})}})}finally{loggedIn(false);$('liveStatus').textContent='Signed out';$('notice').textContent='Enter admin token to reconnect';}};
 $('connect').onclick=async()=>{
  const value=$('token').value;
  if(!value)return;
