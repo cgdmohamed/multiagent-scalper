@@ -25,7 +25,16 @@ curl -H "X-Admin-Token: YOUR_TOKEN" http://localhost:8800/events
 ```
 
 ## Coolify
-Use **Docker Compose Application** from a Git repository, with `compose.yaml` at repo root. Set `ADMIN_TOKEN` as a secret environment variable and provide persistent volume `scalper_data`. Keep API **private** (the Compose mapping binds port 8800 to localhost); access through SSH tunneling or an authenticated private network. Avoid configuring a public domain for this service. See https://coolify.io/docs/applications/choose-deployment-method.
+Deploy as a **Docker Compose Application** using `compose.yaml` from the repository root. Configure `ADMIN_TOKEN` as a secret and keep the persistent `scalper_data` volume. The service **exposes container port 8000** without publishing a host port.
+
+### Cloudflare 525 / HTTPS deployment checklist
+1. In Coolify, assign the HTTPS domain to the **scalper** service and target **container port 8000**. Redeploy after changes. Coolify's reverse proxy (Traefik/Caddy) must be running.
+2. Ensure the DNS A/AAAA records in Cloudflare resolve to the correct VPS and ports 80/443 reach the Coolify reverse proxy. Obtain a valid origin TLS certificate from Coolify (e.g. Let's Encrypt), or install a supported Cloudflare Origin CA certificate where appropriate.
+3. Use **Cloudflare SSL/TLS Full (strict)** only after the origin serves a valid certificate matching the domain. Error **525** is a Cloudflare-to-origin TLS handshake failure: exposing port 8000 alone cannot repair a broken certificate or proxy configuration.
+4. Protect the entire dashboard/admin API behind **Cloudflare Access** (or an equivalent authenticated private gateway) before publicly proxying it. `ADMIN_TOKEN` protects API endpoints but is **not** a complete web authentication solution for the dashboard. Restrict unauthenticated health/status surfaces.
+5. Verify `https://YOUR_DOMAIN/health` through Cloudflare. If 525 persists, test the origin TLS endpoint directly and inspect `coolify-proxy` logs/certificate issuance; do **not** switch to Flexible SSL as a workaround.
+
+For private-only use, remove the public domain and access the container through a trusted internal network or SSH tunnel; the Compose file intentionally does not publish a host port. Official references: https://coolify.io/docs/knowledge-base/docker/compose and https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-525/ .
 
 ## Important limits and known gaps
 1. **No live/demo Bybit order placement, no account authentication**. Paper simulator only.
