@@ -21,6 +21,8 @@ header{display:flex;align-items:center;justify-content:space-between;gap:18px;fl
 <div class="tile"><div class="tilehead"><span>≈</span> Unrealized P&amp;L</div><div class="number" id="upnl">—</div></div>
 <div class="tile"><div class="tilehead"><span>◉</span> Market feed</div><div class="number" id="feed">—</div></div>
 <div class="tile"><div class="tilehead"><span>✧</span> AI review</div><div class="number" id="ai">—</div></div>
+<div class="tile"><div class="tilehead"><span>⚖</span> Leverage</div><div class="number" id="leverage">1×</div></div>
+<div class="tile"><div class="tilehead"><span>⛨</span> Entry protection</div><div class="number" id="entryProtection">—</div><div class="soft" id="entryProtectionReason"></div></div>
 </section>
 <nav class="tabs" aria-label="Dashboard sections"><button class="active" data-tab="overview">◈ Overview</button><button data-tab="radar">⚡ Opportunity Radar</button><button data-tab="performance">▥ Performance</button><button data-tab="intelligence">✧ AI & News</button><button data-tab="history">◷ History</button></nav><main><div class="grid tabpanel visible" data-panel="overview">
 <section class="panel wide"><div class="panelbar"><h2><span style="color:var(--gold)">◈</span> Open positions</h2><span class="muted">Unrealized P&amp;L estimates include exit slippage and fees</span></div><div class="scroll"><table><thead><tr><th>Instrument</th><th>Side</th><th>Quantity</th><th>Entry</th><th>Exit mark</th><th>Unrealized P&amp;L</th><th>Stop / Target</th></tr></thead><tbody id="open"></tbody></table></div></section>
@@ -132,6 +134,10 @@ async function refresh(){
  $('upnl').textContent=signed(s.unrealized_pnl??0);$('upnl').className='number '+cls(s.unrealized_pnl??0);
  $('feed').textContent=s.feed_connected?'Online':'Offline';$('feed').className='number '+(s.feed_connected?'good':'bad');
  $('ai').textContent=a.enabled?'Shadow':'Off';$('ai').className='number '+(a.enabled?'good':'muted');
+ $('leverage').textContent=(s.leverage??1)+'×';
+ $('entryProtection').textContent=s.halted?'HALTED':'ACTIVE';$('entryProtection').className='number '+(s.halted?'bad':'good');
+ const protectionLabels={LEGACY_HISTORY_REQUIRES_RECONCILIATION:'Legacy trade history has no trusted wallet checkpoint. Manual reconciliation required.',CHECKPOINT_INVALID:'Saved wallet checkpoint cannot be validated.',RISK_LIMIT_OR_RESTORED_HALT:'Risk limit reached or halt restored from a previous session. Review account audit.',NONE:'New entries permitted only when all strategy and risk gates pass.'};
+ $('entryProtectionReason').textContent=protectionLabels[s.halt_diagnostic]||s.halt_diagnostic||'—';
  $('open').innerHTML=Object.values(s.positions||{}).length?Object.values(s.positions).map(p=>{const m=s.position_analytics?.[p.symbol]||{};return row('<span class="symbol">'+escapeHTML(p.symbol)+'</span>',badge(p.direction,p.direction.toLowerCase()),escapeHTML(p.qty),'<span class="price">'+precise(p.entry)+'</span>','<span class="price">'+precise(m.estimated_exit_price)+'</span>','<span class="'+cls(m.unrealized_pnl||0)+'">'+signed(m.unrealized_pnl)+'</span>','<span class="price">'+precise(p.stop)+' / '+precise(p.target)+'</span>')}).join(''):row('<span class="muted">No open positions</span>','','','','','','');
  $('pairs').innerHTML=(s.ranked_pairs||[]).map(p=>row('<span class="symbol">'+escapeHTML(p.symbol)+'</span>',num(p.score),num(p.spread_bps),money(p.turnover24h))).join('');
  renderDecisions(d);
