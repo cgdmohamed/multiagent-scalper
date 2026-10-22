@@ -23,6 +23,9 @@ class FuturesPaperEngine(PaperEngine):
     def __init__(self, settings=None):
         super().__init__(settings or Settings())
         self.funding_paid = 0.0
+        self.last_stops = {}
+        self.session_closes = deque(maxlen=200)
+        self.performance_halted = False
 
     def equity(self):
         result = self.cash
@@ -55,8 +58,12 @@ class FuturesPaperEngine(PaperEngine):
         if now_ms-self.last_eval.get(book.symbol,0)<self.cfg.min_interval_ms:return None
         self.last_eval[book.symbol]=now_ms
         votes,momentum=self.agents(book)
+        if self.performance_halted:
+            self.halted=True
         # Closed candles replace the obsolete six-tick entry warm-up.
         reasons=[r for r in self.gates(book,now_ms) if r != "INSUFFICIENT_HISTORY"]
+        if now_ms-self.last_stops.get(book.symbol,-10**15)<5*60*1000:reasons.append("STOP_COOLDOWN_5M")
+        if self.performance_halted:reasons.append("PERFORMANCE_CIRCUIT_BREAKER")
         m1,m3=self.candle_momentum(book.symbol)
         direction="LONG" if votes[0].action=="BUY" else "SHORT" if votes[0].action=="SELL" else None
         if m1 is None:reasons.append("CANDLE_HISTORY_NOT_READY")
@@ -112,6 +119,11 @@ class FuturesPaperEngine(PaperEngine):
         self.cash+=p.margin+(((price-p.entry) if p.direction=="LONG" else (p.entry-price))*p.qty)-fee
         self.trades.appendleft({"event":"CLOSE","direction":p.direction,"symbol":book.symbol,"qty":p.qty,"price":price,"fee":fee,"pnl":realized,"reason":reason,"reduce_only":True,"timestamp":utcnow()})
         del self.positions[book.symbol]
+        if reason=="STOP":self.last_stops[book.symbol]=now_ms
+        self.session_closes.append(realized)
+        if len(self.session_closes)>=10 and sum(self.session_closes)<=-0.005*self.cfg.initial_cash:
+            self.performance_halted=True
+            self.halted=True
         self._day_roll(now_ms)
         eq=self.equity()
         if eq<=self.peak_equity*(1-self.cfg.drawdown_limit) or eq<=self.day_start_equity*(1-self.cfg.daily_loss_limit):self.halted=True
@@ -147,6 +159,9 @@ class FuturesPaperEngine(PaperEngine):
                       "unrealized_pnl":sum(p["unrealized_pnl"] for p in analytics.values()),
                       "position_analytics":analytics,
                       "closed_trades":len(closed),
+                      "performance_halted":self.performance_halted,
+                      "session_closed_count":len(self.session_closes),
+                      "session_closed_pnl":round(sum(self.session_closes),6),
                       "accounting_note":"Exit-marked PnL incl estimated fees/slippage; no funding or liquidation simulation"})
         value.update({"mode":"FUTURES_PAPER_ONLY","market":"BYBIT_LINEAR_USDT_PERPETUAL","leverage":1,
                       "funding_model":"NOT_IMPLEMENTED","liquidation_model":"NOT_IMPLEMENTED",
