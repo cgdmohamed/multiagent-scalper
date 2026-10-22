@@ -331,7 +331,12 @@ def launch_bot_tasks():
 async def shutdown_bot_tasks():
     tasks=list(BOT_TASKS.values())+list(shadow_tasks)
     for task in tasks:task.cancel()
-    if tasks:await asyncio.gather(*tasks,return_exceptions=True)
+    if tasks:
+        done,pending=await asyncio.wait(tasks,timeout=5)
+        if pending:
+            logger.warning("Stop requested; %d worker(s) still cancelling",len(pending))
+            # Fail closed: keep worker references and deny new entries until they finish.
+            for task in pending:task.add_done_callback(lambda _: None)
     BOT_TASKS.clear()
     engine.feed_connected=False
 
