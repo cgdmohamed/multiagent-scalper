@@ -10,7 +10,8 @@ import math
 
 STRATEGIES=("TREND_SCALP","MOMENTUM_BREAKOUT","ORDERBOOK_PRESSURE_PROXY",
             "EXECUTED_CVD_CONFIRM","VWAP_PULLBACK","TREND_ADX_FILTER",
-            "TREND_MACD_RSI_FILTER","TREND_ALL_CONFIRMATIONS")
+            "TREND_MACD_RSI_FILTER","TREND_ALL_CONFIRMATIONS",
+            "EMA_PULLBACK_9_21","SESSION_VWAP_PULLBACK","VOLUME_RANGE_BREAKOUT","RSI_RANGE_REVERSAL")
 
 def _replay_one(signal,bars,starts,fee_bps,slippage_bps,stop_bps,target_bps,hold_minutes):
     try:
@@ -22,9 +23,11 @@ def _replay_one(signal,bars,starts,fee_bps,slippage_bps,stop_bps,target_bps,hold
     # Never enter at a candle open preceding the signal. Deliberately skip
     # the signal's partly formed candle and enter at the next open.
     i=bisect_right(starts,timestamp)
-    if i>=len(bars) or starts[i]-timestamp>120000:
+    if i>=len(bars):
         return None,"MISSING_ENTRY_CANDLE"
-    if bars[-1][0]<starts[i]+hold_minutes*60000:
+    if starts[i]-timestamp>60000:
+        return None,"MISSING_ENTRY_CANDLE"
+    if bars[-1][0]<starts[i]+(hold_minutes-1)*60000:
         return None,"NOT_ENOUGH_FUTURE_BARS"
     raw_entry=float(bars[i][1])
     spread_bps=max(0,float(signal.get("cost_bps",24))-24)
@@ -77,9 +80,14 @@ def replay_signals(signals,bars_by_symbol,fee_bps=10,slippage_bps=2,stop_bps=45,
         strategy=signal.get("strategy")
         if strategy not in STRATEGIES:continue
         symbol=signal.get("symbol")
-        if symbol not in indexed:
+        if symbol not in indexed or not indexed[symbol][0]:
             skipped["NO_HISTORICAL_1M_DATA"]+=1;continue
         bars,starts=indexed[symbol]
+        at=int(signal.get("at_ms",0))
+        if at<starts[0]:
+            skipped["SIGNAL_BEFORE_HISTORY"]+=1;continue
+        if at>=starts[-1]+60000:
+            skipped["SIGNAL_AFTER_HISTORY"]+=1;continue
         result,reason=_replay_one(signal,bars,starts,fee_bps,slippage_bps,stop_bps,target_bps,hold_minutes)
         if reason:
             skipped[reason]+=1;continue
