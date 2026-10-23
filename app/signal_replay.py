@@ -66,6 +66,7 @@ def _replay_one(signal,bars,starts,fee_bps,slippage_bps,stop_bps,target_bps,hold
             "signal_at_ms":timestamp,"entry_at_ms":starts[i],"exit_at_ms":bars[exit_i][0],
             "gross_after_spread_slippage_bps":round(gross,3),
             "fees_bps":round(fees,3),"net_bps":round(net,3),
+            "raw_next_open":raw_entry,"entry_price":entry,"exit_price":exit_price,
             "outcome":reason,"win":net>0},None
 
 def replay_signals(signals,bars_by_symbol,fee_bps=10,slippage_bps=2,stop_bps=45,target_bps=100,hold_minutes=15):
