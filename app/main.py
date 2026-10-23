@@ -387,8 +387,20 @@ def persist_bot_stopped(stopped):
 async def historical_research_worker():
     """Refresh a small bounded research universe without operator intervention."""
     while True:
-        for symbol in ("BTCUSDT","ETHUSDT","SOLUSDT"):
-            if BOT_STOPPED: return
+        # Prioritize symbols with recorded signals; base majors alone caused most
+        # replay observations to miss historical entry candles.
+        cutoff=int(time.time()*1000)-4*86400000
+        counts={}
+        for signal in list(lab.samples):
+            symbol=signal.get("symbol")
+            if symbol and signal.get("at_ms",0)>=cutoff:
+                counts[symbol]=counts.get(symbol,0)+1
+        symbols=list(dict.fromkeys(
+            [s for s,_ in sorted(counts.items(),key=lambda pair:-pair[1])]
+            +["BTCUSDT","ETHUSDT","SOLUSDT"]))[:25]
+        startup_event("HISTORY",f"Refreshing 1m replay candles for {len(symbols)} signaled symbols")
+        for symbol in symbols:
+            if BOT_STOPPED:return
             try:
                 await download_history(DB_PATH,symbol,"1",4)
             except asyncio.CancelledError:
@@ -396,7 +408,7 @@ async def historical_research_worker():
             except Exception as exc:
                 logger.warning("Historical research download %s failed: %s",symbol,type(exc).__name__)
             await asyncio.sleep(2)
-        await asyncio.sleep(6*3600)
+        await asyncio.sleep(30*60)
 
 
 def launch_bot_tasks():
