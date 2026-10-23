@@ -42,7 +42,7 @@ async def download(db_path,symbol,interval="1",days=7):
                 try:
                     ts=int(r[0]); values=tuple(float(v) for v in r[1:6])
                     o,h,l,c,v=values
-                    if ts<start or ts+INTERVALS[interval]>now or not all(map(math.isfinite,values)) or min(o,l,c)>h or l>min(o,c) or v<0:continue
+                    if ts<start or ts+INTERVALS[interval]>now or not all(map(math.isfinite,values)) or h<max(o,c,l) or l>min(o,c,h) or v<0:continue
                     parsed.append((ts,*values))
                 except (ValueError,TypeError,IndexError):continue
             if not parsed:break
