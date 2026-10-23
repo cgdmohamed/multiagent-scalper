@@ -30,6 +30,7 @@ from .research_indicators import ResearchIndicators
 from .capital_guardian import inspect as guardian_inspect,configure_engine
 from .strategy_optimizer import evaluate as evaluate_candidates
 from .signal_replay import replay_signals
+from .instrument_audit import audit as audit_instruments
 from .paper_eligibility import eligibility
 
 logger = logging.getLogger(__name__)
@@ -737,6 +738,12 @@ def research_backtest(symbol: str="BTCUSDT",interval: str="1",x_admin_token: str
     result.update({"symbol":symbol.upper(),"interval":interval,"mode":"RESEARCH_ONLY","strategy":"CANDLE_MOMENTUM_PROTOTYPE"})
     return result
 
+
+@app.get("/research/instrument-audit")
+async def research_instrument_audit(x_admin_token: str | None=Header(default=None)):
+    secure(x_admin_token)
+    names=[row.get("symbol") for row in lab.samples if row.get("symbol")]
+    return await audit_instruments(names)
 
 @app.get("/research/strategy-replay")
 def research_strategy_replay(x_admin_token: str | None=Header(default=None)):
