@@ -30,6 +30,7 @@ from .research_indicators import ResearchIndicators
 from .capital_guardian import inspect as guardian_inspect,configure_engine
 from .strategy_optimizer import evaluate as evaluate_candidates
 from .signal_replay import replay_signals
+from .execution_audit import execution_audit
 from .instrument_audit import audit as audit_instruments
 from .paper_eligibility import eligibility
 
@@ -764,6 +765,51 @@ def research_strategy_replay(x_admin_token: str | None=Header(default=None)):
     report["missing_history_symbols"]=[sym for sym,items in bars.items() if not items]
     report["observed_signals"]=len(signals)
     return report
+
+
+@app.get("/research/execution-audit")
+def research_execution_audit(limit:int=100,symbol:str|None=None,strategy:str|None=None,
+                             x_admin_token:str|None=Header(default=None)):
+    secure(x_admin_token)
+    if not engine.research_only:raise HTTPException(409,"Execution audit requires RESEARCH_ONLY")
+    if not 1<=limit<=200:raise HTTPException(400,"limit must be 1..200")
+    signals=list(lab.samples)
+    filtered=[row for row in signals if (not symbol or row.get("symbol")==symbol.upper())
+              and (not strategy or row.get("strategy")==strategy.upper())]
+    bars={sym:load_history(DB_PATH,sym,"1") for sym in
+          {row.get("symbol") for row in filtered if row.get("symbol")}}
+    return execution_audit(filtered,bars,fee_bps=engine.cfg.taker_fee_bps,
+                           slippage_bps=engine.cfg.slippage_bps_per_side,
+                           stop_bps=engine.cfg.stop_bps,target_bps=engine.cfg.target_bps,
+                           hold_minutes=int(engine.cfg.max_hold_ms//60000),
+                           limit=limit,symbol=symbol.upper() if symbol else None,
+                           strategy=strategy.upper() if strategy else None)
+
+
+@app.get("/research/market-quality")
+async def market_quality_report(x_admin_token:str|None=Header(default=None)):
+    secure(x_admin_token)
+    names=list(dict.fromkeys(
+        row.get("symbol") for row in lab.samples if row.get("symbol")))[:25]
+    info=await audit_instruments(names)
+    out=[]
+    for item in info["instruments"]:
+        symbol=item["symbol"]
+        quote=lab.regimes.get(symbol,{})
+        spread=quote.get("spread_bps")
+        recent=bool(quote.get("at_ms") and int(time.time()*1000)-quote["at_ms"]<60000)
+        contract_ok=item.get("eligible_for_research",False)
+        quality="REVIEW_REQUIRED"
+        if item.get("verified") and not contract_ok:quality="REJECT_CONTRACT"
+        elif contract_ok and recent and isinstance(spread,(int,float)) and spread<=3:
+            quality="CONTRACT_AND_SPREAD_OK_LIQUIDITY_UNVERIFIED"
+        elif contract_ok and recent and isinstance(spread,(int,float)):
+            quality="SPREAD_TOO_WIDE"
+        out.append({**item,"regime":quote.get("regime"),"spread_bps":spread if recent else None,
+                    "quote_fresh":recent,"quality":quality,"orderbook_depth_verified":False,
+                    "public_trade_liquidity_verified":False})
+    return {"mode":"RESEARCH_ONLY","instruments":out,
+            "note":"Only public contract metadata and recent top-of-book spread checked. No historical depth, turnover, or fill evidence; passing contract/spread is NOT trading approval."}
 
 
 @app.get("/research/positioning")
