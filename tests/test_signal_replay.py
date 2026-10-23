@@ -35,5 +35,28 @@ def test_no_future_bars_cannot_be_replayed():
     result=replay_signals([_signal()],{"BTCUSDT":_bars(3)},hold_minutes=5)
     assert result["results"]["TREND_SCALP"]["trades"]==0
 
-def test_all_eight_strategies_have_separate_results():
-    assert len(replay_signals([],{})["results"])==8
+def test_all_twelve_strategies_have_separate_results():
+    assert len(replay_signals([],{})["results"])==12
+
+def test_all_candle_hypotheses_supported():
+    for name in ("EMA_PULLBACK_9_21","SESSION_VWAP_PULLBACK","VOLUME_RANGE_BREAKOUT","RSI_RANGE_REVERSAL"):
+        result=replay_signals([_signal(strategy=name)],{"BTCUSDT":_bars()},hold_minutes=5)
+        assert result["results"][name]["trades"]==1
+
+def test_history_start_is_explained_instead_of_missing_entry():
+    result=replay_signals([_signal()],{"BTCUSDT":_bars()[2:]},hold_minutes=5)
+    assert result["skipped"]["SIGNAL_BEFORE_HISTORY"]==1
+
+def test_future_signal_is_not_assigned_historical_entry():
+    result=replay_signals([_signal(at_ms=10_000_000)],{"BTCUSDT":_bars()},hold_minutes=5)
+    assert result["skipped"]["SIGNAL_AFTER_HISTORY"]==1
+
+def test_signal_requires_next_minute_not_later_candle():
+    bars=_bars()
+    bars.pop(1)
+    result=replay_signals([_signal()],{"BTCUSDT":bars},hold_minutes=5)
+    assert result["skipped"]["MISSING_ENTRY_CANDLE"]==1
+
+def test_exit_on_last_available_holding_bar():
+    result=replay_signals([_signal()],{"BTCUSDT":_bars(6)},hold_minutes=5)
+    assert result["results"]["TREND_SCALP"]["trades"]==1
