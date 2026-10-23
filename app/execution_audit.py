@@ -7,6 +7,7 @@ def execution_audit(signals,bars_by_symbol,*,fee_bps=10,slippage_bps=2,stop_bps=
     limit=max(1,min(int(limit),200))
     records=[]
     counts=Counter()
+    diagnostic={}
     for signal in sorted(signals,key=lambda x:x.get("at_ms",0),reverse=True):
         if signal.get("strategy") not in STRATEGIES:continue
         if symbol and signal.get("symbol")!=symbol:continue
@@ -44,7 +45,21 @@ def execution_audit(signals,bars_by_symbol,*,fee_bps=10,slippage_bps=2,stop_bps=
                 reason="REPLAYED"
         row["status"]=reason
         counts[reason]+=1
+        group=diagnostic.setdefault(row["strategy"],{"replayed":0,"stop_first":0,"target":0,
+                                     "timed_exit":0,"losses":0,"missing_data":0,"net_bps_sum":0.})
+        if reason=="REPLAYED":
+            group["replayed"]+=1
+            group["net_bps_sum"]+=row["net_bps"]
+            group["losses"]+=int(row["net_bps"]<0)
+            group["stop_first"]+=int(row.get("outcome")=="STOP_FIRST")
+            group["target"]+=int(row.get("outcome")=="TARGET")
+            group["timed_exit"]+=int(row.get("outcome")=="TIME")
+        else:group["missing_data"]+=1
         if len(records)<limit:records.append(row)
-    return {"mode":"RESEARCH_ONLY","records":records,"status_counts":dict(counts),
+    for group in diagnostic.values():
+        n=group["replayed"]
+        group["average_net_bps"]=round(group.pop("net_bps_sum")/n,3) if n else None
+    return {"mode":"RESEARCH_ONLY","records":records,"strategy_diagnostics":diagnostic,
+            "status_counts":dict(counts),
             "matched_filters":{"symbol":symbol,"strategy":strategy},
             "limitations":"Lab is a 15m future quote mark after estimated costs; replay is next-minute entry with stop/target and fees. Different exits and missing observations are not accounting errors. No actual fills; overlap and selection effects remain."}
