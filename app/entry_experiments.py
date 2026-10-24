@@ -30,6 +30,12 @@ def experiment(signals,bars_by_symbol,*,fee_bps=10,slippage_bps=2,hold_minutes=1
             side=1 if signal["direction"]=="LONG" else -1
             if signal["direction"] not in ("LONG","SHORT"):continue
         except (KeyError,TypeError,ValueError):continue
+        # Historical signal-time spread is recorded in cost_bps. Never use
+        # current market conditions to retroactively admit old observations.
+        try: spread=max(0.,float(signal.get("cost_bps",24))-24.)
+        except (TypeError,ValueError):skipped["UNKNOWN_SIGNAL_SPREAD"]+=1;continue
+        if spread>3.:
+            skipped["SIGNAL_SPREAD_TOO_WIDE"]+=1;continue
         i=bisect_right(start,at)
         if i>=len(bars) or start[i]-at>60000:
             skipped["NO_NEXT_ENTRY"]+=1;continue
@@ -90,4 +96,4 @@ def experiment(signals,bars_by_symbol,*,fee_bps=10,slippage_bps=2,hold_minutes=1
     return {"mode":"RESEARCH_ONLY","execution_authority":"NONE",
             "variants":list(VARIANTS),"results":rows,"skipped":dict(skipped),
             "qualification":"NONE — experimental comparisons, not independent validated optimization",
-            "limitations":"Chronological 70/30 observational holdout; variants are tested on historical recorded signals, not regenerated strategies. Confirmation and pullback enter on later candle open, not a promised limit fill. Signal-time spread/fees modeled, ATR uses past candles. No slippage sensitivity, intrabar tape, liquidity proof or wallet simulation."}
+            "limitations":"Chronological 70/30 observational holdout; variants are tested on historical recorded signals, not regenerated strategies. Confirmation and pullback enter on later candle open, not a promised limit fill. Rejects recorded signal-time spread above 3bps; contract metadata is not historically verified. Signal-time spread/fees modeled, ATR uses past candles. No slippage sensitivity, intrabar tape, liquidity proof or wallet simulation."}
