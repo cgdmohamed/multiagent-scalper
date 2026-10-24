@@ -8,7 +8,9 @@ def sig(i, cost=25.):
             "at_ms":i*60000+20000,"cost_bps":cost}
 
 def test_experiments_are_read_only_with_no_promotion():
-    result=experiment([sig(i) for i in range(20,95)],{"BTCUSDT":bars()})
+    result=experiment([sig(i) for i in range(20,470,15)],{"BTCUSDT":bars(500)})
+    assert result["results"]
+    assert any(row["holdout"]["n"]>0 for row in result["results"])
     assert result["execution_authority"]=="NONE"
     assert result["mode"]=="RESEARCH_ONLY"
     assert "NEXT_OPEN_ATR" in VARIANTS
