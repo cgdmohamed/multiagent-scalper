@@ -31,6 +31,7 @@ from .capital_guardian import inspect as guardian_inspect,configure_engine
 from .strategy_optimizer import evaluate as evaluate_candidates
 from .signal_replay import replay_signals
 from .execution_audit import execution_audit
+from .entry_experiments import experiment as evaluate_entry_experiments
 from .instrument_audit import audit as audit_instruments
 from .paper_eligibility import eligibility
 
@@ -765,6 +766,20 @@ def research_strategy_replay(x_admin_token: str | None=Header(default=None)):
     report["missing_history_symbols"]=[sym for sym,items in bars.items() if not items]
     report["observed_signals"]=len(signals)
     return report
+
+
+@app.get("/research/entry-experiments")
+def research_entry_experiments(x_admin_token:str|None=Header(default=None)):
+    secure(x_admin_token)
+    if not engine.research_only:
+        raise HTTPException(409,"Entry experiments require RESEARCH_ONLY")
+    signals=list(lab.samples)
+    bars={sym:load_history(DB_PATH,sym,"1") for sym in
+          {row.get("symbol") for row in signals if row.get("symbol")}}
+    return evaluate_entry_experiments(
+        signals,bars,fee_bps=engine.cfg.taker_fee_bps,
+        slippage_bps=engine.cfg.slippage_bps_per_side,
+        hold_minutes=int(engine.cfg.max_hold_ms//60000))
 
 
 @app.get("/research/execution-audit")
