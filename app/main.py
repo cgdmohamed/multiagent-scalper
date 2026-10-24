@@ -449,8 +449,8 @@ def launch_bot_tasks():
     global STARTUP_GENERATION
     if BOT_STOPPED:return
     STARTUP_GENERATION+=1
-    startup_event("WORKERS_STARTED","Research workers requested: market, news, radar and history")
-    for name,fn in (("market",market_stream),("news",news.loop),("radar",radar_stream),("history",historical_research_worker)):
+    startup_event("WORKERS_STARTED","Market feed, news and radar active; historical research worker disabled")
+    for name,fn in (("market",market_stream),("news",news.loop),("radar",radar_stream)):
         if name not in BOT_TASKS or BOT_TASKS[name].done():
             BOT_TASKS[name]=asyncio.create_task(fn())
 
