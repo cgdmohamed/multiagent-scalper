@@ -20,11 +20,12 @@ def _atr(bars,i,n=14):
 
 def experiment(signals,bars_by_symbol,*,fee_bps=10,slippage_bps=2,hold_minutes=15):
     grouped=defaultdict(list); skipped=defaultdict(int)
+    indexed={sym:(ordered,[b[0] for b in ordered]) for sym,rows in bars_by_symbol.items()
+             if (ordered:=sorted(rows,key=lambda b:b[0]))}
     for signal in sorted(signals,key=lambda s:s.get("at_ms",0)):
         sym=signal.get("symbol")
-        bars=sorted(bars_by_symbol.get(sym,()),key=lambda b:b[0])
-        if not bars:skipped["NO_HISTORY"]+=1;continue
-        start=[b[0] for b in bars]
+        if sym not in indexed:skipped["NO_HISTORY"]+=1;continue
+        bars,start=indexed[sym]
         try:
             at=int(signal["at_ms"])
             side=1 if signal["direction"]=="LONG" else -1
