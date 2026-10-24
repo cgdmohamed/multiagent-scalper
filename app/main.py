@@ -436,7 +436,7 @@ async def historical_research_worker():
         for symbol in symbols:
             if BOT_STOPPED:return
             try:
-                await download_history(DB_PATH,symbol,"1",2)
+                await download_history(DB_PATH,symbol,"1",4)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
