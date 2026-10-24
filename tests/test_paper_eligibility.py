@@ -27,6 +27,8 @@ def test_all_requirements_must_hold():
     assert ready()["eligible"]
 
 def test_actual_application_does_not_promote_unbound_lab_signals():
-    from app.main import PAPER_STRATEGY_BOUND,engine
+    from app.main import PAPER_STRATEGY_BOUND,engine,startup_research_only
     assert PAPER_STRATEGY_BOUND is False
-    assert engine.research_only is True
+    # Operator explicitly opted out of the research-only default (RESEARCH_ONLY=0).
+    assert startup_research_only() is False
+    assert engine.research_only is False

@@ -24,6 +24,10 @@ curl -H "X-Admin-Token: YOUR_TOKEN" http://localhost:8800/decisions
 curl -H "X-Admin-Token: YOUR_TOKEN" http://localhost:8800/events
 ```
 
+## Startup mode
+
+Paper entries are **ENABLED by default** (`RESEARCH_ONLY` unset or `0`). Set `RESEARCH_ONLY=1` in `.env` to start in research-only mode with no new entries. This default is a deliberate operator choice and bypasses the runtime paper-eligibility gate — `/control/paper/enable` still requires a validated bound strategy, and `/control/paper/disable` or `RESEARCH_ONLY=1` restores research-only behavior. All execution remains **PAPER ONLY** in every mode: no authenticated exchange orders. Note: `/experimental-paper/control` requires research-only mode.
+
 ## Coolify
 Deploy as a **Docker Compose Application** using `compose.yaml` from the repository root. Configure `ADMIN_TOKEN` as a secret and keep the persistent `scalper_data` volume. The service **exposes container port 8000** without publishing a host port.
 
