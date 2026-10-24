@@ -9,6 +9,7 @@ services:
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-6-luna}
       OPENAI_CHIEF_MODEL: ${OPENAI_CHIEF_MODEL:-gpt-5.6-terra}
       AI_MAX_REVIEWS_PER_RUN: ${AI_MAX_REVIEWS_PER_RUN:-20}
+      RESEARCH_ONLY: ${RESEARCH_ONLY:-0}
     volumes:
       - scalper_data:/data
     # Coolify reverse proxy connects directly to container port 8000.

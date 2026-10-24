@@ -48,7 +48,17 @@ shadow_tasks = set()
 radar = OpportunityRadar()
 lab = StrategyLab()
 indicators = ResearchIndicators()
-engine.research_only = True
+
+def startup_research_only():
+    """Paper entries start ENABLED unless the operator opts out with RESEARCH_ONLY=1.
+
+    This is a deliberate deployment-level choice that bypasses the runtime
+    paper-eligibility gate (/control/paper/enable still requires a validated
+    bound strategy). No live orders exist in any mode.
+    """
+    return os.getenv("RESEARCH_ONLY", "0") == "1"
+
+engine.research_only = startup_research_only()
 PAPER_STRATEGY_BOUND = False  # Current entry engine is not driven by validated Strategy Lab candidates.
 configure_engine(engine)
 SESSION_STARTED_AT = time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime())

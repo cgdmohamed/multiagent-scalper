@@ -41,6 +41,22 @@ def test_disabled_orderbook_pressure_not_emitted():
     changed=lab.observe(Book("BTCUSDT",101,101.01,1000,300,1_000_000,1_000_000,1),0,0)
     assert not [v for v in changed if v["strategy"]=="ORDERBOOK_PRESSURE_PROXY"]
 
+def test_disabled_technical_strategies_blocked():
+    # Full prerequisites for TREND_ADX_FILTER and TREND_ALL_CONFIRMATIONS.
+    book=Book("BTCUSDT",100,100.01,1000,300,1_000_000,1_000_000,1)
+    indicators={"technical":{"ready":True,"adx14":30,"plus_di":35,"minus_di":10,"macd_hist":1,"rsi14":55},
+        "public_trades":30,"notional_2m":25000,"atr_bps":20,"cvd_recent_30s":10000,"cvd_prior_90s":0}
+    import app.strategy_lab as strategy_lab
+    saved=strategy_lab.DISABLED_STRATEGIES
+    try:
+        # Prove the fixture actually triggers both strategies when enabled.
+        strategy_lab.DISABLED_STRATEGIES=frozenset()
+        emitted={v["strategy"] for v in StrategyLab().observe(book,40,25,indicators=indicators)}
+        assert {"TREND_ADX_FILTER","TREND_ALL_CONFIRMATIONS"}<=emitted
+    finally:
+        strategy_lab.DISABLED_STRATEGIES=saved
+    assert not ({"TREND_ADX_FILTER","TREND_ALL_CONFIRMATIONS"}&{v["strategy"] for v in StrategyLab().observe(book,40,25,indicators=indicators)})
+
 def test_disabled_research_hypotheses_not_emitted():
     lab=StrategyLab()
     changed=lab.observe(Book("BTCUSDT",100,100.01,1000,300,1_000_000,1_000_000,1),40,25,
