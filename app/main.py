@@ -264,7 +264,20 @@ async def market_stream():
                 raise RuntimeError("No eligible pairs: fail closed")
             engine.set_candidates(ranked)
             engine.order_manager.allowed_symbols.update(p.symbol for p in ranked)
-            watched = sorted(set(p.symbol for p in ranked) | set(engine.positions))
+            paper=get_experimental_paper()
+            meme_pairs=[]
+            if paper.enabled or paper.position:
+                try:
+                    # Public market discovery only, without widening legacy order routing.
+                    radar_pairs=await fetch_candidates(client,top_n=40,
+                        min_turnover=5_000_000,max_spread_bps=3.0,
+                        radar_mode=True,meme_slots=12)
+                    meme_pairs=[p.symbol for p in radar_pairs if is_meme(p.symbol)][:12]
+                except Exception as exc:
+                    logger.warning("Meme public discovery unavailable: %s",type(exc).__name__)
+            watched = sorted(set(p.symbol for p in ranked) | set(engine.positions)
+                             | set(meme_pairs) | ({paper.position["symbol"]} if paper.position else set()))
+            startup_event("PAPER_WATCHLIST",f"Experimental meme symbols subscribed: {len(meme_pairs)}")
             startup_event("CANDLES",f"Discovered {len(watched)} symbols; loading closed candles")
             async with httpx.AsyncClient() as candle_client:
                 await prime_candles(candle_client, watched)
