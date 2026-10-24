@@ -279,6 +279,7 @@ async def market_stream():
                 engine.last_error = None
                 logger.info("Bybit spot candidates: %s", watched)
                 depth = {}
+                lab_last_evaluated = {}
                 refresh_at = time.monotonic()+300
                 while time.monotonic() < refresh_at:
                     try:
@@ -333,9 +334,15 @@ async def market_stream():
                     book=Book(symbol,bid,ask,sum(depth[symbol][0].values()),sum(depth[symbol][1].values()),exchange_ms,now_ms,int(data.get("u") or 0))
                     before=len(engine.trades)
                     decision=engine.on_book(book,now_ms)
-                    m1,m3=engine.candle_momentum(book.symbol)
-                    changes=lab.observe(book,m1,m3,indicators.snapshot(symbol,now_ms))
-                    save_lab_changes(changes)
+                    # Orderbook ticks arrive much faster than strategy observations.
+                    # Continue processing engine/position exits on every tick, but
+                    # bound expensive Strategy Lab indicators and SQLite writes.
+                    changes=[]
+                    if now_ms-lab_last_evaluated.get(symbol,0)>=1000:
+                        lab_last_evaluated[symbol]=now_ms
+                        m1,m3=engine.candle_momentum(book.symbol)
+                        changes=lab.observe(book,m1,m3,indicators.snapshot(symbol,now_ms))
+                        save_lab_changes(changes)
                     # Experimental ledger uses only newly generated signals and public quotes.
                     # Never touches the historical engine's cash, positions or halt.
                     try:
@@ -424,18 +431,18 @@ async def historical_research_worker():
                 counts[symbol]=counts.get(symbol,0)+1
         symbols=list(dict.fromkeys(
             [s for s,_ in sorted(counts.items(),key=lambda pair:-pair[1])]
-            +["BTCUSDT","ETHUSDT","SOLUSDT"]))[:25]
+            +["BTCUSDT","ETHUSDT","SOLUSDT"]))[:12]
         startup_event("HISTORY",f"Refreshing 1m replay candles for {len(symbols)} signaled symbols")
         for symbol in symbols:
             if BOT_STOPPED:return
             try:
-                await download_history(DB_PATH,symbol,"1",4)
+                await download_history(DB_PATH,symbol,"1",2)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 logger.warning("Historical research download %s failed: %s",symbol,type(exc).__name__)
             await asyncio.sleep(2)
-        await asyncio.sleep(30*60)
+        await asyncio.sleep(90*60)
 
 
 def launch_bot_tasks():
