@@ -9,10 +9,10 @@ def signal(ms):
     return {"id":"test:1","symbol":"DOGEUSDT","strategy":"EXECUTED_CVD_CONFIRM",
             "direction":"LONG","at_ms":ms}
 
-def test_disabled_by_default_and_no_real_orders(tmp_path):
+def test_virtual_paper_auto_arms_and_rejects_non_meme(tmp_path):
     ms=1_800_000_000_000
     p=ExperimentalPaper(tmp_path/"test.sqlite")
-    p.on_quote(book(ms),ms,[signal(ms)])
+    p.on_quote(book(ms,symbol="BTCUSDT"),ms,[signal(ms)])
     assert p.position is None
     assert p.enabled
     assert p.status()["mode"]=="EXPERIMENTAL_PAPER_ONLY"
@@ -23,7 +23,7 @@ def test_entry_exit_persist_and_no_auto_resume(tmp_path):
     p.on_quote(book(ms),ms,[signal(ms)])
     assert p.position is not None
     assert p.position["margin"]<=100.
-    assert p.position["symbol"]=="BTCUSDT"
+    assert p.position["symbol"]=="DOGEUSDT"
     p.control(False)
     # Pausing entries does not orphan an existing virtual position.
     p.on_quote(book(ms+16*60000),ms+16*60000,[])
