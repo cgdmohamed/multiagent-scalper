@@ -10,7 +10,8 @@ class ExperimentalPaper:
         self.enabled=False;self.cash=self.initial;self.position=None
         self.day_start=self.initial;self.day=None;self.peak=self.initial
         self.halted=False;self.trades=[];self.last_signal=set()
-        self.strategy="EXECUTED_CVD_CONFIRM"
+        self.strategies=["EXECUTED_CVD_CONFIRM","TREND_SCALP"]
+        self.symbol="IRYSUSDT"
         self._restore()
 
     def _db(self):
@@ -21,7 +22,7 @@ class ExperimentalPaper:
 
     def _save(self):
         obj={k:getattr(self,k) for k in ("enabled","cash","position","day_start","day",
-             "peak","halted","trades","strategy")}
+             "peak","halted","trades","strategies","symbol")}
         with self._db() as db:
             db.execute("INSERT INTO experimental_paper(key,value) VALUES ('state',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(json.dumps(obj),))
 
@@ -30,7 +31,7 @@ class ExperimentalPaper:
             row=db.execute("SELECT value FROM experimental_paper WHERE key='state'").fetchone()
         if row:
             obj=json.loads(row[0])
-            for k in ("enabled","cash","position","day_start","day","peak","halted","trades","strategy"):
+            for k in ("cash","position","day_start","day","peak","halted","trades","strategies","symbol"):
                 if k in obj:setattr(self,k,obj[k])
         # Restart never silently resumes new entry authority.
         self.enabled=False
@@ -44,7 +45,7 @@ class ExperimentalPaper:
         return {"mode":"EXPERIMENTAL_PAPER_ONLY","enabled":self.enabled,
                 "cash":round(self.cash,6),"equity_estimate":round(self.cash+(self.position or {}).get("margin",0),6),
                 "position":self.position,"halted":self.halted,"peak_equity":self.peak,
-                "strategy":self.strategy,"risk_per_trade_fraction":.001,"daily_loss_fraction":.005,
+                "strategies":self.strategies,"symbol":self.symbol,"risk_per_trade_fraction":.001,"daily_loss_fraction":.005,
                 "max_drawdown_fraction":.02,"recent_trades":self.trades[-30:],
                 "note":"Unrealized PnL excluded unless latest public quote available; not exchange fills."}
 
@@ -72,7 +73,7 @@ class ExperimentalPaper:
                 pnl=unreal-fee-p["entry_fee"]
                 self.cash+=p["margin"]+unreal-fee
                 self.trades.append({"type":"CLOSE","symbol":book.symbol,"pnl":round(pnl,6),
-                    "price":exit_price,"reason":reason,"at_ms":now_ms})
+                    "price":exit_price,"reason":reason,"at_ms":now_ms,"strategy":p.get("strategy")})
                 self.position=None
                 if self.cash<=self.day_start*.995 or self.cash<=self.peak*.98:
                     self.halted=True;self.enabled=False
@@ -82,7 +83,7 @@ class ExperimentalPaper:
         if self.cash<=self.day_start*.995 or self.cash<=self.peak*.98:
             self.halted=True;self.enabled=False;self._save();return
         for signal in signals:
-            if signal.get("strategy")!=self.strategy or signal.get("symbol")!=book.symbol:continue
+            if signal.get("strategy") not in self.strategies or signal.get("symbol")!=self.symbol or book.symbol!=self.symbol:continue
             key=signal.get("id")
             if not key or key in self.last_signal:continue
             self.last_signal.add(key)
@@ -101,8 +102,8 @@ class ExperimentalPaper:
             qty=notional/entry;fee=notional*.001
             self.position={"symbol":book.symbol,"direction":direction,"entry":entry,"stop":stop,
                            "target":target,"qty":qty,"margin":notional,"entry_fee":fee,
-                           "opened_ms":now_ms,"signal_id":key}
+                           "opened_ms":now_ms,"signal_id":key,"strategy":signal["strategy"]}
             self.cash-=notional+fee
             self.trades.append({"type":"OPEN","symbol":book.symbol,"direction":direction,
-                                "price":entry,"fee":fee,"at_ms":now_ms,"signal_id":key})
+                                "price":entry,"fee":fee,"at_ms":now_ms,"signal_id":key,"strategy":signal["strategy"]})
             self._save();return
