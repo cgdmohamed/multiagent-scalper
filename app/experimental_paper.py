@@ -8,7 +8,7 @@ from .discovery import is_meme
 class ExperimentalPaper:
     def __init__(self,path,initial=1000.):
         self.path=Path(path);self.initial=float(initial)
-        self.enabled=False;self.cash=self.initial;self.position=None
+        self.enabled=False;self.manual_pause=False;self.cash=self.initial;self.position=None
         self.day_start=self.initial;self.day=None;self.peak=self.initial
         self.halted=False;self.trades=[];self.last_signal=set()
         self.strategies=["EXECUTED_CVD_CONFIRM","TREND_SCALP"]
@@ -23,7 +23,7 @@ class ExperimentalPaper:
 
     def _save(self):
         obj={k:getattr(self,k) for k in ("enabled","cash","position","day_start","day",
-             "peak","halted","trades","strategies","universe")}
+             "peak","halted","trades","strategies","universe","manual_pause")}
         with self._db() as db:
             db.execute("INSERT INTO experimental_paper(key,value) VALUES ('state',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(json.dumps(obj),))
 
@@ -32,18 +32,21 @@ class ExperimentalPaper:
             row=db.execute("SELECT value FROM experimental_paper WHERE key='state'").fetchone()
         if row:
             obj=json.loads(row[0])
-            for k in ("cash","position","day_start","day","peak","halted","trades","strategies","symbol"):
+            for k in ("cash","position","day_start","day","peak","halted","trades","manual_pause"):
                 if k in obj:setattr(self,k,obj[k])
-        # Restart never silently resumes new entry authority.
-        self.enabled=False
+        # User authorized virtual paper auto-start. A manual pause and any
+        # risk halt persist across deploys. No real trading path exists.
+        self.strategies=["EXECUTED_CVD_CONFIRM","TREND_SCALP"]
+        self.universe="MEME_COINS"
+        self.enabled=not self.halted and not self.manual_pause
         self._save()
 
     def control(self,enable):
         if enable and self.halted:raise ValueError("PAPER_RISK_HALTED")
-        self.enabled=bool(enable);self._save();return self.status()
+        self.enabled=bool(enable);self.manual_pause=not enable;self._save();return self.status()
 
     def status(self):
-        return {"mode":"EXPERIMENTAL_PAPER_ONLY","enabled":self.enabled,
+        return {"mode":"EXPERIMENTAL_PAPER_ONLY","enabled":self.enabled,"manual_pause":self.manual_pause,
                 "cash":round(self.cash,6),"equity_estimate":round(self.cash+(self.position or {}).get("margin",0),6),
                 "position":self.position,"halted":self.halted,"peak_equity":self.peak,
                 "strategies":self.strategies,"universe":self.universe,"risk_per_trade_fraction":.001,"daily_loss_fraction":.005,
