@@ -34,6 +34,7 @@ from .execution_audit import execution_audit
 from .entry_experiments import experiment as evaluate_entry_experiments
 from .research_coordinator import research_cycle
 from .research_ai import research_commentary
+from .experimental_paper import ExperimentalPaper
 from .instrument_audit import audit as audit_instruments
 from .paper_eligibility import eligibility
 
@@ -140,6 +141,14 @@ def restore_lab():
         key=(row["symbol"],row["strategy"])
         lab.last_signal[key]=max(lab.last_signal.get(key,0),row["at_ms"])
 
+
+experimental_paper = None
+
+def get_experimental_paper():
+    global experimental_paper
+    if experimental_paper is None:
+        experimental_paper = ExperimentalPaper(DB_PATH)
+    return experimental_paper
 
 def persist(kind, payload):
     DB_PATH.parent.mkdir(parents=True,exist_ok=True)
@@ -325,7 +334,20 @@ async def market_stream():
                     before=len(engine.trades)
                     decision=engine.on_book(book,now_ms)
                     m1,m3=engine.candle_momentum(book.symbol)
-                    save_lab_changes(lab.observe(book,m1,m3,indicators.snapshot(symbol,now_ms)))
+                    changes=lab.observe(book,m1,m3,indicators.snapshot(symbol,now_ms))
+                    save_lab_changes(changes)
+                    # Experimental ledger uses only newly generated signals and public quotes.
+                    # Never touches the historical engine's cash, positions or halt.
+                    try:
+                        get_experimental_paper().on_quote(
+                            book,now_ms,[row for row in changes if row.get("at_ms")==now_ms
+                              and row.get("symbol")==book.symbol],
+                            feed_ready=engine.feed_connected and not MANUALLY_PAUSED and not BOT_STOPPED)
+                    except Exception as paper_exc:
+                        logger.exception("Experimental paper processing failed: %s",paper_exc)
+                        if experimental_paper is not None:
+                            experimental_paper.enabled=False
+
                     if decision:
                         persist("decision",asdict(decision))
                         # Only a bounded sample is sent to optional shadow reviewers.
@@ -610,6 +632,23 @@ def secure(x_admin_token: str | None):
 
 @app.get("/health")
 def health(): return {"ok":True,"mode":"FUTURES_PAPER_ONLY","feed_connected":engine.feed_connected,"ranked_pairs":len(engine.candidates),"decisions":len(engine.decisions)}
+
+@app.get("/experimental-paper/status")
+def experimental_paper_status(x_admin_token:str|None=Header(default=None)):
+    secure(x_admin_token)
+    return get_experimental_paper().status()
+
+
+@app.post("/experimental-paper/control")
+def experimental_paper_control(enable:bool=False,x_admin_token:str|None=Header(default=None)):
+    secure(x_admin_token)
+    if enable and (BOT_STOPPED or MANUALLY_PAUSED or not engine.feed_connected):
+        raise HTTPException(409,"LIVE_PUBLIC_FEED_REQUIRED_AND_OPERATOR_UNPAUSED")
+    if enable and not engine.research_only:
+        raise HTTPException(409,"EXPERIMENTAL_PAPER_REQUIRES_RESEARCH_ONLY")
+    try:return get_experimental_paper().control(enable)
+    except ValueError as exc:raise HTTPException(409,str(exc))
+
 
 @app.get("/status")
 def status(x_admin_token: str | None=Header(default=None)):
