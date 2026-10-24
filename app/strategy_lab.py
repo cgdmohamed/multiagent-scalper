@@ -2,6 +2,9 @@
 from collections import deque
 from datetime import datetime,timezone
 import time
+# Retired strategies: negative 15m net results in the lab after modeled costs.
+# Signal generation is disabled; historical samples and measurements are retained.
+DISABLED_STRATEGIES=frozenset({"TREND_ALL_CONFIRMATIONS","EMA_PULLBACK_9_21","TREND_ADX_FILTER","MOMENTUM_BREAKOUT","ORDERBOOK_PRESSURE_PROXY"})
 class StrategyLab:
     def __init__(self):
         self.samples=deque(maxlen=2000)
@@ -78,6 +81,7 @@ class StrategyLab:
                     signals[name]=direction
                     self.last_signal[(sym,name,"bar")]=bar_at
         for strategy,direction in signals.items():
+            if strategy in DISABLED_STRATEGIES:continue
             key=(sym,strategy)
             if now-self.last_signal.get(key,-10**15)<15*60*1000:continue
             self.last_signal[key]=now
