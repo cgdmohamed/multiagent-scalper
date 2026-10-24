@@ -49,8 +49,8 @@ class ExperimentalPaper:
                 "note":"Unrealized PnL excluded unless latest public quote available; not exchange fills."}
 
     def on_quote(self,book,now_ms,signals,feed_ready=True):
-        if not self.enabled:return
         if not feed_ready:return
+        if not self.enabled and not self.position:return
         day=time.strftime("%Y-%m-%d",time.gmtime(now_ms/1000))
         if self.day!=day:
             self.day=day;self.day_start=self.cash+(self.position or {}).get("margin",0)
@@ -78,7 +78,7 @@ class ExperimentalPaper:
                     self.halted=True;self.enabled=False
                 self._save()
             return
-        if self.halted or book.spread_bps>3 or now_ms-book.received_ms>3000:return
+        if not self.enabled or self.halted or book.spread_bps>3 or now_ms-book.received_ms>3000:return
         if self.cash<=self.day_start*.995 or self.cash<=self.peak*.98:
             self.halted=True;self.enabled=False;self._save();return
         for signal in signals:
