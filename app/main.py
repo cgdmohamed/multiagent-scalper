@@ -32,6 +32,8 @@ from .strategy_optimizer import evaluate as evaluate_candidates
 from .signal_replay import replay_signals
 from .execution_audit import execution_audit
 from .entry_experiments import experiment as evaluate_entry_experiments
+from .research_coordinator import research_cycle
+from .research_ai import research_commentary
 from .instrument_audit import audit as audit_instruments
 from .paper_eligibility import eligibility
 
@@ -765,6 +767,25 @@ def research_strategy_replay(x_admin_token: str | None=Header(default=None)):
     report["available_history_symbols"]=[sym for sym,items in bars.items() if items]
     report["missing_history_symbols"]=[sym for sym,items in bars.items() if not items]
     report["observed_signals"]=len(signals)
+    return report
+
+
+@app.get("/research/agent-cycle")
+async def research_agent_cycle(include_ai:bool=False,x_admin_token:str|None=Header(default=None)):
+    secure(x_admin_token)
+    if not engine.research_only:
+        raise HTTPException(409,"Research agent cycle requires RESEARCH_ONLY")
+    signals=list(lab.samples)
+    bars={sym:load_history(DB_PATH,sym,"1") for sym in
+          {row.get("symbol") for row in signals if row.get("symbol")}}
+    # CPU-bound research runs off the ASGI event loop.
+    report=await asyncio.to_thread(research_cycle,signals,bars,
+        engine.cfg.taker_fee_bps,engine.cfg.slippage_bps_per_side,
+        int(engine.cfg.max_hold_ms//60000))
+    if include_ai:
+        report["ai_committee"]=await research_commentary(report)
+    else:
+        report["ai_committee"]={"mode":"NOT_REQUESTED"}
     return report
 
 
